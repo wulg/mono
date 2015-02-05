@@ -7,7 +7,6 @@
 //
 // Copyright (C) 2004-2007 Novell, Inc (http://www.novell.com)
 //
-#if !TARGET_JVM
 using NUnit.Framework;
 using System;
 using System.IO;
@@ -29,7 +28,7 @@ namespace MonoTests.System.Runtime.InteropServices
 			public int field;
 		}
 
-		class ClsNoLayout {
+		public class ClsNoLayout {
 			public int field;
 		}
 
@@ -174,12 +173,12 @@ namespace MonoTests.System.Runtime.InteropServices
 			Marshal.FreeHGlobal (ptr);
 		}
 
-		struct Foo {
-			int a;
-			static int b;
-			long c;
-			static char d;
-			int e;
+		public struct Foo {
+			public int a;
+			public static int b;
+			public long c;
+			public static char d;
+			public int e;
 		}
 
 		[Test]
@@ -498,7 +497,6 @@ namespace MonoTests.System.Runtime.InteropServices
 				Marshal.FreeCoTaskMem (ptr);
 			}
 		}
-#if NET_2_0
 		private const string NotSupported = "Not supported before Windows 2000 Service Pack 3";
 		private static char[] PlainText = new char[] { 'a', 'b', 'c' };
 		private static byte[] AsciiPlainText = new byte[] { (byte) 'a', (byte) 'b', (byte) 'c' };
@@ -664,7 +662,6 @@ namespace MonoTests.System.Runtime.InteropServices
 				Assert.Ignore (NotSupported);
 			}
 		}
-#endif
 
 #if !NET_2_1
 		[Test]
@@ -781,7 +778,6 @@ namespace MonoTests.System.Runtime.InteropServices
 			Assert.IsNull (Marshal.PtrToStructure (IntPtr.Zero, typeof (SimpleStruct2)));
 		}
 		
-#if NET_2_0
 		[Test]
 		public void TestGetExceptionForHR ()
 		{
@@ -794,7 +790,6 @@ namespace MonoTests.System.Runtime.InteropServices
 			ex = Marshal.GetExceptionForHR (E_INVALIDARG);
 			Assert.AreEqual (typeof (ArgumentException), ex.GetType (), "E_INVALIDARG");
 		}
-#endif
 		bool RunningOnUnix {
 			get {
 				int p = (int) Environment.OSVersion.Platform;
@@ -878,4 +873,3 @@ namespace MonoTests.System.Runtime.InteropServices
 	}
 #endif
 }
-#endif

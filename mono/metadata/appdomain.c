@@ -78,7 +78,7 @@
  * Changes which are already detected at runtime, like the addition
  * of icalls, do not require an increment.
  */
-#define MONO_CORLIB_VERSION 111
+#define MONO_CORLIB_VERSION 117
 
 typedef struct
 {
@@ -88,9 +88,9 @@ typedef struct
 	gchar *filename;
 } RuntimeConfig;
 
-CRITICAL_SECTION mono_delegate_section;
+mono_mutex_t mono_delegate_section;
 
-CRITICAL_SECTION mono_strtod_mutex;
+mono_mutex_t mono_strtod_mutex;
 
 static gunichar2 process_guid [36];
 static gboolean process_guid_set = FALSE;
@@ -105,10 +105,6 @@ mono_domain_assembly_preload (MonoAssemblyName *aname,
 static MonoAssembly *
 mono_domain_assembly_search (MonoAssemblyName *aname,
 							 gpointer user_data);
-
-static MonoAssembly *
-mono_domain_assembly_postload_search (MonoAssemblyName *aname,
-									  gpointer user_data);
 
 static void
 mono_domain_fire_assembly_load (MonoAssembly *assembly, gpointer user_data);
@@ -234,25 +230,25 @@ mono_runtime_init (MonoDomain *domain, MonoThreadStartCB start_cb,
 	mono_install_assembly_refonly_preload_hook (mono_domain_assembly_preload, GUINT_TO_POINTER (TRUE));
 	mono_install_assembly_search_hook (mono_domain_assembly_search, GUINT_TO_POINTER (FALSE));
 	mono_install_assembly_refonly_search_hook (mono_domain_assembly_search, GUINT_TO_POINTER (TRUE));
-	mono_install_assembly_postload_search_hook (mono_domain_assembly_postload_search, GUINT_TO_POINTER (FALSE));
-	mono_install_assembly_postload_refonly_search_hook (mono_domain_assembly_postload_search, GUINT_TO_POINTER (TRUE));
+	mono_install_assembly_postload_search_hook ((void*)mono_domain_assembly_postload_search, GUINT_TO_POINTER (FALSE));
+	mono_install_assembly_postload_refonly_search_hook ((void*)mono_domain_assembly_postload_search, GUINT_TO_POINTER (TRUE));
 	mono_install_assembly_load_hook (mono_domain_fire_assembly_load, NULL);
 	mono_install_lookup_dynamic_token (mono_reflection_lookup_dynamic_token);
 
 	mono_thread_init (start_cb, attach_cb);
 
 	class = mono_class_from_name (mono_defaults.corlib, "System", "AppDomainSetup");
-	setup = (MonoAppDomainSetup *) mono_object_new (domain, class);
+	setup = (MonoAppDomainSetup *) mono_object_new_pinned (domain, class);
 
 	class = mono_class_from_name (mono_defaults.corlib, "System", "AppDomain");
-	ad = (MonoAppDomain *) mono_object_new (domain, class);
+	ad = (MonoAppDomain *) mono_object_new_pinned (domain, class);
 	ad->data = domain;
 	domain->domain = ad;
 	domain->setup = setup;
 
-	InitializeCriticalSection (&mono_delegate_section);
+	mono_mutex_init_recursive (&mono_delegate_section);
 
-	InitializeCriticalSection (&mono_strtod_mutex);
+	mono_mutex_init_recursive (&mono_strtod_mutex);
 	
 	mono_thread_attach (domain);
 	mono_context_init (domain);
@@ -330,7 +326,7 @@ mono_context_init (MonoDomain *domain)
 	MonoAppContext *context;
 
 	class = mono_class_from_name (mono_defaults.corlib, "System.Runtime.Remoting.Contexts", "Context");
-	context = (MonoAppContext *) mono_object_new (domain, class);
+	context = (MonoAppContext *) mono_object_new_pinned (domain, class);
 	context->domain_id = domain->domain_id;
 	context->context_id = 0;
 	domain->default_context = context;
@@ -401,6 +397,25 @@ mono_domain_create_appdomain (char *friendly_name, char *configuration_file)
 	ad = mono_domain_create_appdomain_internal (friendly_name, setup);
 
 	return mono_domain_from_appdomain (ad);
+}
+
+/**
+ * mono_domain_set_config:
+ * @domain: MonoDomain initialized with the appdomain we want to change
+ * @base_dir: new base directory for the appdomain
+ * @config_file_name: path to the new configuration for the app domain
+ *
+ * Used to set the system configuration for an appdomain
+ *
+ * Without using this, embedded builds will get 'System.Configuration.ConfigurationErrorsException: 
+ * Error Initializing the configuration system. ---> System.ArgumentException: 
+ * The 'ExeConfigFilename' argument cannot be null.' for some managed calls.
+ */
+void
+mono_domain_set_config (MonoDomain *domain, const char *base_dir, const char *config_file_name)
+{
+	MONO_OBJECT_SETREF (domain->setup, application_base, mono_string_new (domain, base_dir));
+	MONO_OBJECT_SETREF (domain->setup, configuration_file, mono_string_new (domain, config_file_name));
 }
 
 static MonoAppDomainSetup*
@@ -894,12 +909,12 @@ ves_icall_System_AppDomain_GetAssemblies (MonoAppDomain *ad, MonoBoolean refonly
 }
 
 MonoReflectionAssembly *
-mono_try_assembly_resolve (MonoDomain *domain, MonoString *fname, gboolean refonly)
+mono_try_assembly_resolve (MonoDomain *domain, MonoString *fname, MonoAssembly *requesting, gboolean refonly)
 {
 	MonoClass *klass;
 	MonoMethod *method;
 	MonoBoolean isrefonly;
-	gpointer params [2];
+	gpointer params [3];
 
 	if (mono_runtime_get_no_exec ())
 		return NULL;
@@ -917,15 +932,15 @@ mono_try_assembly_resolve (MonoDomain *domain, MonoString *fname, gboolean refon
 
 	isrefonly = refonly ? 1 : 0;
 	params [0] = fname;
-	params [1] = &isrefonly;
+	params [1] = (requesting) ? mono_assembly_get_object (domain, requesting) : NULL;
+	params [2] = &isrefonly;
 	return (MonoReflectionAssembly *) mono_runtime_invoke (method, domain->domain, params, NULL);
 }
 
-static MonoAssembly *
-mono_domain_assembly_postload_search (MonoAssemblyName *aname,
-									  gpointer user_data)
+MonoAssembly *
+mono_domain_assembly_postload_search (MonoAssemblyName *aname, MonoAssembly *requesting,
+									  gboolean refonly)
 {
-	gboolean refonly = GPOINTER_TO_UINT (user_data);
 	MonoReflectionAssembly *assembly;
 	MonoDomain *domain = mono_domain_get ();
 	char *aname_str;
@@ -939,7 +954,7 @@ mono_domain_assembly_postload_search (MonoAssemblyName *aname,
 		g_free (aname_str);
 		return NULL;
 	}
-	assembly = mono_try_assembly_resolve (domain, str, refonly);
+	assembly = mono_try_assembly_resolve (domain, str, requesting, refonly);
 	g_free (aname_str);
 
 	if (assembly)
@@ -1861,7 +1876,7 @@ mono_domain_assembly_search (MonoAssemblyName *aname,
 	for (tmp = domain->domain_assemblies; tmp; tmp = tmp->next) {
 		ass = tmp->data;
 		/* Dynamic assemblies can't match here in MS.NET */
-		if (ass->dynamic || refonly != ass->ref_only || !mono_assembly_names_equal (aname, &ass->aname))
+		if (assembly_is_dynamic (ass) || refonly != ass->ref_only || !mono_assembly_names_equal (aname, &ass->aname))
 			continue;
 
 		mono_domain_assemblies_unlock (domain);
@@ -1964,7 +1979,7 @@ ves_icall_System_AppDomain_LoadAssembly (MonoAppDomain *ad,  MonoString *assRef,
 	if (!parsed) {
 		/* This is a parse error... */
 		if (!refOnly)
-			refass = mono_try_assembly_resolve (domain, assRef, refOnly);
+			refass = mono_try_assembly_resolve (domain, assRef, NULL, refOnly);
 		return refass;
 	}
 
@@ -1974,7 +1989,7 @@ ves_icall_System_AppDomain_LoadAssembly (MonoAppDomain *ad,  MonoString *assRef,
 	if (!ass) {
 		/* MS.NET doesn't seem to call the assembly resolve handler for refonly assemblies */
 		if (!refOnly)
-			refass = mono_try_assembly_resolve (domain, assRef, refOnly);
+			refass = mono_try_assembly_resolve (domain, assRef, NULL, refOnly);
 		else
 			refass = NULL;
 		if (!refass) {
@@ -2034,6 +2049,7 @@ gint32
 ves_icall_System_AppDomain_ExecuteAssembly (MonoAppDomain *ad, 
 											MonoReflectionAssembly *refass, MonoArray *args)
 {
+	MonoError error;
 	MonoImage *image;
 	MonoMethod *method;
 
@@ -2043,10 +2059,10 @@ ves_icall_System_AppDomain_ExecuteAssembly (MonoAppDomain *ad,
 	image = refass->assembly->image;
 	g_assert (image);
 
-	method = mono_get_method (image, mono_image_get_entry_point (image), NULL);
+	method = mono_get_method_checked (image, mono_image_get_entry_point (image), NULL, NULL, &error);
 
 	if (!method)
-		g_error ("No entry point method found in %s", image->name);
+		g_error ("No entry point method found in %s due to %s", image->name, mono_error_get_message (&error));
 
 	if (!args)
 		args = (MonoArray *) mono_array_new (ad->data, mono_defaults.string_class, 0);
@@ -2253,12 +2269,12 @@ deregister_reflection_info_roots (MonoDomain *domain)
 		 * promoting it from a simple lock to a complex lock, which we better avoid if
 		 * possible.
 		 */
-		if (image->dynamic)
+		if (image_is_dynamic (image))
 			deregister_reflection_info_roots_from_list (image);
 
 		for (i = 0; i < image->module_count; ++i) {
 			MonoImage *module = image->modules [i];
-			if (module && module->dynamic)
+			if (module && image_is_dynamic (module))
 				deregister_reflection_info_roots_from_list (module);
 		}
 	}
@@ -2302,7 +2318,7 @@ unload_thread_main (void *arg)
 	 * class->runtime_info.
 	 */
 
-	mono_loader_lock ();
+	mono_loader_lock (); //FIXME why do we need the loader lock here?
 	mono_domain_lock (domain);
 #ifdef HAVE_SGEN_GC
 	/*
@@ -2396,6 +2412,7 @@ mono_domain_try_unload (MonoDomain *domain, MonoObject **exc)
 	unload_data *thread_data;
 	MonoNativeThreadId tid;
 	MonoDomain *caller_domain = mono_domain_get ();
+	char *name;
 
 	/* printf ("UNLOAD STARTING FOR %s (%p) IN THREAD 0x%x.\n", domain->friendly_name, domain, GetCurrentThreadId ()); */
 
@@ -2447,7 +2464,10 @@ mono_domain_try_unload (MonoDomain *domain, MonoObject **exc)
 	thread_handle = mono_threads_create_thread ((LPTHREAD_START_ROUTINE)unload_thread_main, thread_data, 0, CREATE_SUSPENDED, &tid);
 	if (thread_handle == NULL)
 		return;
+	name = g_strdup_printf ("Unload thread for domain %x", domain);
+	mono_thread_info_set_name (tid, name);
 	mono_thread_info_resume (tid);
+	g_free (name);
 
 	/* Wait for the thread */	
 	while (!thread_data->done && WaitForSingleObjectEx (thread_handle, INFINITE, TRUE) == WAIT_IO_COMPLETION) {

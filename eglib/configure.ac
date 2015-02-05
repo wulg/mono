@@ -135,6 +135,7 @@ AC_CHECK_SIZEOF(void *)
 AC_CHECK_SIZEOF(long)
 AC_CHECK_SIZEOF(long long)
 AC_CHECK_FUNCS(strlcpy stpcpy strtok_r rewinddir vasprintf)
+AC_CHECK_FUNCS(getrlimit)
 
 #
 # Mono currently supports 10.6, but strndup is not available prior to 10.7; avoiding
@@ -179,7 +180,7 @@ if test "x$have_iso_varargs" = "xyes"; then
 fi
 AC_SUBST(G_HAVE_ISO_VARARGS)
 
-AC_CHECK_HEADERS(getopt.h sys/time.h sys/wait.h pwd.h langinfo.h iconv.h localcharset.h sys/types.h)
+AC_CHECK_HEADERS(getopt.h sys/select.h sys/time.h sys/wait.h pwd.h langinfo.h iconv.h localcharset.h sys/types.h sys/resource.h)
 AC_CHECK_HEADER(alloca.h, [HAVE_ALLOCA_H=1], [HAVE_ALLOCA_H=0])
 AC_SUBST(HAVE_ALLOCA_H)
 
@@ -234,6 +235,12 @@ AC_ARG_WITH(crosspkgdir, [  --with-crosspkgdir=/path/to/pkg-config/dir      Chan
 		export PKG_CONFIG_PATH
 	fi
 )
+
+AC_ARG_ENABLE(werror, [  --enable-werror Pass -Werror to the C compiler], werror_flag=$enableval, werror_flag=no)
+if test x$werror_flag = xyes; then
+	WERROR_CFLAGS="-Werror"
+fi
+AC_SUBST([WERROR_CFLAGS])
 
 AC_SUBST(GPOINTER_TO_INT)
 AC_SUBST(GPOINTER_TO_UINT)

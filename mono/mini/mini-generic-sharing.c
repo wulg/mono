@@ -498,12 +498,14 @@ mono_class_get_method_generic (MonoClass *klass, MonoMethod *method)
 	}
 
 	if (method != declaring) {
+		MonoError error;
 		MonoGenericContext context;
 
 		context.class_inst = NULL;
 		context.method_inst = mono_method_get_context (method)->method_inst;
 
-		m = mono_class_inflate_generic_method (m, &context);
+		m = mono_class_inflate_generic_method_checked (m, &context, &error);
+		g_assert (mono_error_ok (&error)); /* FIXME don't swallow the error */
 	}
 
 	return m;
@@ -565,7 +567,9 @@ inflate_info (MonoRuntimeGenericContextInfoTemplate *oti, MonoGenericContext *co
 			inflated_method = mono_method_search_in_array_class (inflated_class,
 				method->name, method->signature);
 		} else {
-			inflated_method = mono_class_inflate_generic_method (method, context);
+			MonoError error;
+			inflated_method = mono_class_inflate_generic_method_checked (method, context, &error);
+			g_assert (mono_error_ok (&error)); /* FIXME don't swallow the error */
 		}
 		mono_class_init (inflated_method->klass);
 		g_assert (inflated_method->klass == inflated_class);
@@ -620,7 +624,9 @@ inflate_info (MonoRuntimeGenericContextInfoTemplate *oti, MonoGenericContext *co
 			inflated_method = mono_method_search_in_array_class (inflated_class,
 				method->name, method->signature);
 		} else {
-			inflated_method = mono_class_inflate_generic_method (method, context);
+			MonoError error;
+			inflated_method = mono_class_inflate_generic_method_checked (method, context, &error);
+			g_assert (mono_error_ok (&error)); /* FIXME don't swallow the error */
 		}
 		mono_class_init (inflated_method->klass);
 		g_assert (inflated_method->klass == inflated_class);
@@ -1343,9 +1349,6 @@ instantiate_info (MonoDomain *domain, MonoRuntimeGenericContextInfoTemplate *oti
 
 		if (virtual) {
 			/* Same as in mono_emit_method_call_full () */
-#ifndef MONO_ARCH_HAVE_IMT
-			NOT_IMPLEMENTED;
-#endif
 			if ((method->klass->parent == mono_defaults.multicastdelegate_class) && (!strcmp (method->name, "Invoke"))) {
 				/* See mono_emit_method_call_full () */
 				/* The gsharedvt trampoline will recognize this constant */
@@ -2689,7 +2692,9 @@ mini_method_get_rgctx (MonoMethod *m)
 gboolean
 mini_type_is_vtype (MonoCompile *cfg, MonoType *t)
 {
-    return MONO_TYPE_ISSTRUCT (t) || mini_is_gsharedvt_variable_type (cfg, t);
+	t = mini_native_type_replace_type (t);
+
+	return MONO_TYPE_ISSTRUCT (t) || mini_is_gsharedvt_variable_type (cfg, t);
 }
 
 gboolean

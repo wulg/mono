@@ -66,6 +66,7 @@ tailcall: len:120 clob:c
 br: len:6
 label: len:0
 seq_point: len:31 clob:c
+il_seq_point: len:0
 
 long_add: dest:i src1:i src2:i len:3 clob:1 nacl:6
 long_sub: dest:i src1:i src2:i len:3 clob:1 nacl:6
@@ -114,7 +115,7 @@ cgt: dest:c len:8
 cgt.un: dest:c len:8
 clt: dest:c len:8
 clt.un: dest:c len:8
-localloc: dest:i src1:i len:84
+localloc: dest:i src1:i len:96
 compare: src1:i src2:i len:3
 lcompare: src1:i src2:i len:3
 icompare: src1:i src2:i len:3
@@ -256,6 +257,10 @@ float_clt_membase: dest:i src1:f src2:b len:35
 float_clt_un_membase: dest:i src1:f src2:b len:42
 float_conv_to_u: dest:i src1:f len:46
 fmove: dest:f src1:f len:8
+move_f_to_i4: dest:i src1:f clob:1 len:9
+move_i4_to_f: dest:f src1:i len:9
+move_f_to_i8: dest:i src1:f len:5
+move_i8_to_f: dest:f src1:i len:5
 call_handler: len:14 clob:c nacl:52
 aot_const: dest:i len:10
 nacl_gc_safe_point: clob:c
@@ -293,19 +298,37 @@ amd64_icompare_reg_membase: src1:i src2:b len:8
 amd64_set_xmmreg_r4: dest:f src1:f len:14 clob:m
 amd64_set_xmmreg_r8: dest:f src1:f len:14 clob:m
 amd64_save_sp_to_lmf: len:16
-tls_get: dest:i len:16
+tls_get: dest:i len:32
 tls_get_reg: dest:i src1:i len:32
 tls_set: src1:i len:16
 tls_set_reg: src1:i src2:i len:32
 atomic_add_i4: src1:b src2:i dest:i len:32
-atomic_add_new_i4: src1:b src2:i dest:i len:32
-atomic_exchange_i4: src1:b src2:i dest:a len:32
 atomic_add_i8: src1:b src2:i dest:i len:32
-atomic_add_new_i8: src1:b src2:i dest:i len:32
-atomic_exchange_i8: src1:b src2:i dest:a len:32
+atomic_exchange_i4: src1:b src2:i dest:i clob:x len:8
+atomic_exchange_i8: src1:b src2:i dest:i clob:x len:8
 atomic_cas_i4: src1:b src2:i src3:a dest:a len:24
 atomic_cas_i8: src1:b src2:i src3:a dest:a len:24
-memory_barrier: len:16
+memory_barrier: len:3
+atomic_load_i1: dest:c src1:b len:9
+atomic_load_u1: dest:c src1:b len:9
+atomic_load_i2: dest:i src1:b len:9
+atomic_load_u2: dest:i src1:b len:9
+atomic_load_i4: dest:i src1:b len:9
+atomic_load_u4: dest:i src1:b len:9
+atomic_load_i8: dest:i src1:b len:9
+atomic_load_u8: dest:i src1:b len:9
+atomic_load_r4: dest:f src1:b len:16
+atomic_load_r8: dest:f src1:b len:16
+atomic_store_i1: dest:b src1:c len:12
+atomic_store_u1: dest:b src1:c len:12
+atomic_store_i2: dest:b src1:i len:12
+atomic_store_u2: dest:b src1:i len:12
+atomic_store_i4: dest:b src1:i len:12
+atomic_store_u4: dest:b src1:i len:12
+atomic_store_i8: dest:b src1:i len:12
+atomic_store_u8: dest:b src1:i len:12
+atomic_store_r4: dest:b src1:f len:18
+atomic_store_r8: dest:b src1:f len:13
 adc: dest:i src1:i src2:i len:3 clob:1
 addcc: dest:i src1:i src2:i len:3 clob:1
 subcc: dest:i src1:i src2:i len:3 clob:1
@@ -353,7 +376,6 @@ int_sub_imm: dest:i src1:i clob:1 len:8 nacl:10
 int_mul_imm: dest:i src1:i clob:1 len:32
 int_div_imm: dest:a src1:i clob:d len:32
 int_div_un_imm: dest:a src1:i clob:d len:32
-int_rem_imm: dest:a src1:a len:32 clob:d
 int_rem_un_imm: dest:d src1:i clob:a len:32
 int_and_imm: dest:i src1:i clob:1 len:8
 int_or_imm: dest:i src1:i clob:1 len:8
@@ -514,7 +536,7 @@ vcall2_membase: src1:b len:64 clob:c
 
 dyn_call: src1:i src2:i len:64 clob:c nacl:128
 
-localloc_imm: dest:i len:84
+localloc_imm: dest:i len:96
 
 load_mem: dest:i len:16
 loadi8_mem: dest:i len:16

@@ -99,9 +99,7 @@ namespace Microsoft.Build.Execution
 		IDictionary<string, string> global_properties;
 		
 		string full_path, directory;
-		#if NET_4_5
 		ElementLocation location;
-		#endif
 		
 		Dictionary<string, ProjectItemDefinitionInstance> item_definitions;
 		List<ResolvedImport> raw_imports; // maybe we don't need this...
@@ -146,9 +144,7 @@ namespace Microsoft.Build.Execution
 
 		void InitializeProperties (ProjectRootElement xml)
 		{
-			#if NET_4_5
 			location = xml.Location;
-			#endif
 			full_path = xml.FullPath;
 			directory = string.IsNullOrWhiteSpace (xml.DirectoryPath) ? System.IO.Directory.GetCurrentDirectory () : xml.DirectoryPath;
 			InitialTargets = xml.InitialTargets.Split (item_target_sep, StringSplitOptions.RemoveEmptyEntries).Select (s => s.Trim ()).ToList ();
@@ -164,7 +160,7 @@ namespace Microsoft.Build.Execution
 				// FIXME: this is kind of workaround for unavoidable issue that PLATFORM=* is actually given
 				// on some platforms and that prevents setting default "PLATFORM=AnyCPU" property.
 				if (!string.Equals ("PLATFORM", (string) p.Key, StringComparison.OrdinalIgnoreCase))
-					this.properties [(string) p.Key] = new ProjectPropertyInstance ((string) p.Key, false, (string) p.Value);
+					this.properties [(string) p.Key] = new ProjectPropertyInstance ((string) p.Key, true, (string) p.Value);
 			foreach (var p in global_properties)
 				this.properties [p.Key] = new ProjectPropertyInstance (p.Key, false, p.Value);
 			var tools = projects.GetToolset (tools_version) ?? projects.GetToolset (projects.DefaultToolsVersion);
@@ -256,7 +252,7 @@ namespace Microsoft.Build.Execution
 
 		void EvaluateItems (ProjectRootElement xml, IEnumerable<ProjectElement> elements)
 		{
-			foreach (var child in elements) {
+			foreach (var child in elements.Reverse ()) {
 				var ige = child as ProjectItemGroupElement;
 				if (ige != null) {
 					foreach (var p in ige.Items) {
@@ -334,11 +330,9 @@ namespace Microsoft.Build.Execution
 		
 		public List<string> InitialTargets { get; private set; }
 		
-#if NET_4_5		
 		public bool IsImmutable {
 			get { throw new NotImplementedException (); }
 		}
-#endif
 		
 		public IDictionary<string, ProjectItemDefinitionInstance> ItemDefinitions {
 			get { return item_definitions; }
@@ -352,21 +346,15 @@ namespace Microsoft.Build.Execution
 			get { return all_evaluated_items.Select (i => i.ItemType).Distinct ().ToArray (); }
 		}
 
-#if NET_4_5		
 		public ElementLocation ProjectFileLocation {
 			get { return location; }
 		}
-#endif
 
 		public ICollection<ProjectPropertyInstance> Properties {
 			get { return properties.Values; }
 		}
 		
-		#if NET_4_5
 		public
-		#else
-		internal
-		#endif
 		IDictionary<string, ProjectTargetInstance> Targets {
 			get { return targets; }
 		}
@@ -435,6 +423,7 @@ namespace Microsoft.Build.Execution
 			var parameters = new BuildParameters (projects) {
 				ForwardingLoggers = remoteLoggers,
 				Loggers = loggers,
+				DefaultToolsVersion = projects.DefaultToolsVersion,
 			};
 			var requestData = new BuildRequestData (this, targets ?? DefaultTargets.ToArray ());
 			var result = manager.Build (parameters, requestData);
@@ -520,12 +509,10 @@ namespace Microsoft.Build.Execution
 			throw new NotImplementedException ();
 		}
 		
-#if NET_4_5
 		public void UpdateStateFrom (ProjectInstance projectState)
 		{
 			throw new NotImplementedException ();
 		}
-#endif
 		
 		// static members		
 

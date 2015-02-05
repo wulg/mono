@@ -37,15 +37,12 @@ using Microsoft.Build.Exceptions;
 using System.Globalization;
 using Microsoft.Build.Construction;
 using Microsoft.Build.Internal.Expressions;
+using System.Xml;
 
 namespace Microsoft.Build.Internal
 {
 	class BuildEngine4
-#if NET_4_5
 		: IBuildEngine4
-#else
-		: IBuildEngine3
-#endif
 	{
 		public BuildEngine4 (BuildSubmission submission)
 		{
@@ -121,17 +118,23 @@ namespace Microsoft.Build.Internal
 			
 			try {
 				
-				var initialPropertiesFormatted = "Initial Properties:\n" + string.Join (Environment.NewLine, project.Properties.OrderBy (p => p.Name).Select (p => string.Format ("{0} = {1}", p.Name, p.EvaluatedValue)).ToArray ());
-				LogMessageEvent (new BuildMessageEventArgs (initialPropertiesFormatted, null, null, MessageImportance.Low));
+				var initialGlobalPropertiesFormatted = "Initial Global Properties:\n" + string.Join (Environment.NewLine, project.Properties.OrderBy (p => p.Name).Where (p => p.IsImmutable).Select (p => string.Format ("{0} = {1}", p.Name, p.EvaluatedValue)).ToArray ());
+				LogMessageEvent (new BuildMessageEventArgs (initialGlobalPropertiesFormatted, null, null, MessageImportance.Low));
+				var initialProjectPropertiesFormatted = "Initial Project Properties:\n" + string.Join (Environment.NewLine, project.Properties.OrderBy (p => p.Name).Where (p => !p.IsImmutable).Select (p => string.Format ("{0} = {1}", p.Name, p.EvaluatedValue)).ToArray ());
+				LogMessageEvent (new BuildMessageEventArgs (initialProjectPropertiesFormatted, null, null, MessageImportance.Low));
 				var initialItemsFormatted = "Initial Items:\n" + string.Join (Environment.NewLine, project.Items.OrderBy (i => i.ItemType).Select (i => string.Format ("{0} : {1}", i.ItemType, i.EvaluatedInclude)).ToArray ());
 				LogMessageEvent (new BuildMessageEventArgs (initialItemsFormatted, null, null, MessageImportance.Low));
 				
 				// null targets -> success. empty targets -> success(!)
+				foreach (var targetName in (request.ProjectInstance.InitialTargets).Where (t => t != null))
+					BuildTargetByName (targetName, args);
 				if (request.TargetNames == null)
-					args.Result.OverallResult = BuildResultCode.Success;
+					args.Result.OverallResult = args.CheckCancel () ? BuildResultCode.Failure : args.Result.ResultsByTarget.Any (p => p.Value.ResultCode == TargetResultCode.Failure) ? BuildResultCode.Failure : BuildResultCode.Success;
 				else {
-					foreach (var targetName in (args.TargetNames ?? request.TargetNames).Where (t => t != null))
-						BuildTargetByName (targetName, args);
+					foreach (var targetName in (args.TargetNames ?? request.TargetNames).Where (t => t != null)) {
+						if (!BuildTargetByName (targetName, args))
+							break;
+					}
 			
 					// FIXME: check .NET behavior, whether cancellation always results in failure.
 					args.Result.OverallResult = args.CheckCancel () ? BuildResultCode.Failure : args.Result.ResultsByTarget.Any (p => p.Value.ResultCode == TargetResultCode.Failure) ? BuildResultCode.Failure : BuildResultCode.Success;
@@ -253,6 +256,7 @@ namespace Microsoft.Build.Internal
 							var value = args.Project.ExpandString (p.Value);
 							project.SetProperty (p.Name, value);
 						}
+						continue;
 					}
 
 					var ii = child as ProjectItemGroupTaskInstance;
@@ -264,6 +268,7 @@ namespace Microsoft.Build.Internal
 								continue;
 							project.AddItem (item.ItemType, project.ExpandString (item.Include));
 						}
+						continue;
 					}
 					
 					var task = child as ProjectTaskInstance;
@@ -275,7 +280,14 @@ namespace Microsoft.Build.Internal
 						}
 						if (!RunBuildTask (target, task, targetResult, args))
 							return false;
+						continue;
 					}
+
+					var onError = child as ProjectOnErrorInstance;
+					if (onError != null)
+						continue; // evaluated under catch clause.
+
+					throw new NotSupportedException (string.Format ("Unexpected Target element children \"{0}\"", child.GetType ()));
 				}
 			} catch (Exception ex) {
 				// fallback task specified by OnError element
@@ -302,10 +314,8 @@ namespace Microsoft.Build.Internal
 			
 			// Create Task instance.
 			var factoryIdentityParameters = new Dictionary<string,string> ();
-			#if NET_4_5
 			factoryIdentityParameters ["MSBuildRuntime"] = taskInstance.MSBuildRuntime;
 			factoryIdentityParameters ["MSBuildArchitecture"] = taskInstance.MSBuildArchitecture;
-			#endif
 			var task = args.BuildTaskFactory.CreateTask (taskInstance.Name, factoryIdentityParameters, this);
 			if (task == null)
 				throw new InvalidOperationException (string.Format ("TaskFactory {0} returned null Task", args.BuildTaskFactory));
@@ -452,7 +462,7 @@ namespace Microsoft.Build.Internal
 			}
 			public void SetMetadataValueLiteral (string metadataName, string metadataValue)
 			{
-				metadata [metadataName] = ProjectCollection.Unescape (metadataValue);
+				metadata [metadataName] = WindowsCompatibilityExtensions.NormalizeFilePath (ProjectCollection.Unescape (metadataValue));
 			}
 			public IDictionary CloneCustomMetadataEscaped ()
 			{
@@ -490,7 +500,7 @@ namespace Microsoft.Build.Internal
 			}
 			public void SetMetadata (string metadataName, string metadataValue)
 			{
-				metadata [metadataName] = metadataValue;
+				metadata [metadataName] = WindowsCompatibilityExtensions.NormalizeFilePath (metadataValue);
 			}
 			public string ItemSpec { get; set; }
 			public int MetadataCount {
@@ -507,7 +517,6 @@ namespace Microsoft.Build.Internal
 			}
 		}
 		
-#if NET_4_5
 		#region IBuildEngine4 implementation
 		
 		// task objects are not in use anyways though...
@@ -548,7 +557,6 @@ namespace Microsoft.Build.Internal
 			return reg.Object;
 		}
 		#endregion
-#endif
 
 		#region IBuildEngine3 implementation
 
@@ -574,13 +582,20 @@ namespace Microsoft.Build.Internal
 		// To NOT reuse this IBuildEngine instance for different build, we create another BuildManager and BuildSubmisson and then run it.
 		public bool BuildProjectFile (string projectFileName, string[] targetNames, IDictionary globalProperties, IDictionary targetOutputs, string toolsVersion)
 		{
+			toolsVersion = string.IsNullOrEmpty (toolsVersion) ? project.ToolsVersion : toolsVersion;
 			var globalPropertiesThatMakeSense = new Dictionary<string,string> ();
 			foreach (DictionaryEntry p in globalProperties)
 				globalPropertiesThatMakeSense [(string) p.Key] = (string) p.Value;
-			var result = new BuildManager ().Build (this.submission.BuildManager.OngoingBuildParameters.Clone (), new BuildRequestData (projectFileName, globalPropertiesThatMakeSense, toolsVersion, targetNames, null));
-			foreach (var p in result.ResultsByTarget)
-				targetOutputs [p.Key] = p.Value.Items;
-			return result.OverallResult == BuildResultCode.Success;
+			var projectToBuild = new ProjectInstance (ProjectRootElement.Create (XmlReader.Create (projectFileName)), globalPropertiesThatMakeSense, toolsVersion, Projects);
+			// Not very sure if ALL of these properties should be added, but some are certainly needed. 
+			foreach (var p in this.project.Properties.Where (p => !globalProperties.Contains (p.Name)))
+				projectToBuild.SetProperty (p.Name, p.EvaluatedValue);
+			
+			IDictionary<string,TargetResult> outs;
+			var ret = projectToBuild.Build (targetNames ?? new string [] {"Build"}, Projects.Loggers, out outs);
+			foreach (var p in outs)
+				targetOutputs [p.Key] = p.Value.Items ?? new ITaskItem [0];
+			return ret;
 		}
 
 		public bool BuildProjectFilesInParallel (string[] projectFileNames, string[] targetNames, IDictionary[] globalProperties, IDictionary[] targetOutputsPerProject, string[] toolsVersion, bool useResultsCache, bool unloadProjectsOnCompletion)

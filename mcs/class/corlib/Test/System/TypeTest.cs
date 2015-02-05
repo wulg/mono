@@ -143,6 +143,10 @@ namespace MonoTests.System
 		}
 
 		public event EventHandler E;
+		public void Dummy ()
+		{
+			E += delegate {};
+		}
 	}
 
 	class Derived1 : Base1
@@ -159,7 +163,11 @@ namespace MonoTests.System
 			set { }
 		}
 
-		public event Action E;
+		public new event Action E;
+		public new void Dummy ()
+		{
+			E += delegate {};
+		}
 	}
 
 	public class Foo<T>
@@ -297,16 +305,11 @@ namespace MonoTests.System
 			Assert.AreEqual (typeof (ICloneable[][]).IsAssignableFrom (typeof (Duper[][])), true, "#12");
 
 			// Tests for vectors<->one dimensional arrays */
-#if TARGET_JVM // Lower bounds arrays are not supported for TARGET_JVM.
-			Array arr1 = Array.CreateInstance (typeof (int), new int[] {1});
-			Assert.AreEqual (typeof (int[]).IsAssignableFrom (arr1.GetType ()), true, "#13");
-#else
 			Array arr1 = Array.CreateInstance (typeof (int), new int[] {1}, new int[] {0});
 			Array arr2 = Array.CreateInstance (typeof (int), new int[] {1}, new int[] {10});
 
 			Assert.AreEqual (typeof (int[]).IsAssignableFrom (arr1.GetType ()), true, "#13");
 			Assert.AreEqual (typeof (int[]).IsAssignableFrom (arr2.GetType ()), false, "#14");
-#endif // TARGET_JVM
 
 			// Test that arrays of enums can be cast to their base types
 			Assert.AreEqual (typeof (int[]).IsAssignableFrom (typeof (TypeCode[])), true, "#15");
@@ -390,7 +393,6 @@ namespace MonoTests.System
 		}
 
 		[Test]
-		[Category ("TargetJvmNotWorking")]
 		public void TestGetPropertyImpl ()
 		{
 			// Test getting property that is exact
@@ -1517,7 +1519,6 @@ namespace MonoTests.System
 							    typeof (long), new Type[0], null), "#2");
 		}
 
-#if !TARGET_JVM // StructLayout not supported for TARGET_JVM
 		[StructLayout(LayoutKind.Explicit, Pack = 4, Size = 64)]
 		public class Class1
 		{
@@ -1543,7 +1544,6 @@ namespace MonoTests.System
 			Assert.AreEqual (LayoutKind.Explicit, attr3.Value);
 			Assert.AreEqual (CharSet.Unicode, attr3.CharSet);
 		}
-#endif // TARGET_JVM
 
 		[Test]
 		public void Namespace ()
@@ -1868,7 +1868,9 @@ PublicKeyToken=b77a5c561934e089"));
 
 		struct B
 		{
+			#pragma warning disable 169
 			int value;
+			#pragma warning restore 169
 		}
 
 		[Test]
@@ -2161,7 +2163,7 @@ PublicKeyToken=b77a5c561934e089"));
 			a1 = new string [10];
 		}
 
-		class X
+		public class X
 		{
 			public static int Value;
 		}
@@ -2786,7 +2788,7 @@ PublicKeyToken=b77a5c561934e089"));
 			Assert.IsNull (i);
 		}
 
-#if !TARGET_JVM && !MOBILE // Reflection.Emit is not supported for TARGET_JVM
+#if !MOBILE
 		[Test]
 		public void EqualsUnderlyingType ()
 		{
@@ -2805,7 +2807,7 @@ PublicKeyToken=b77a5c561934e089"));
 
 			Assert.IsTrue (typeof (int).Equals (e));
 		}
-#endif // TARGET_JVM
+#endif
 
 		[Test]
 		public void Equals_Type_Null ()
@@ -3208,6 +3210,14 @@ PublicKeyToken=b77a5c561934e089"));
 			Type t2 = Type.GetType (" System.Type, mscorlib");
 			Assert.AreEqual (t1, t2);
 		}
+
+#if !MONOTOUCH
+		[Test]
+		public void SpaceAfterComma () {
+			string strType = "System.Collections.Generic.Dictionary`2[[System.Int32,mscorlib], [System.String,mscorlib]],mscorlib";
+			Assert.IsTrue (Type.GetType (strType) != null);
+		}
+#endif
 
 #if !MONOTOUCH
 		[Test]
@@ -3661,17 +3671,10 @@ PublicKeyToken=b77a5c561934e089"));
 
 			Assert.AreEqual ("A", typeof (MyRealEnum).GetEnumName ((byte)0), "#11");
 			Assert.AreEqual ("A", typeof (MyRealEnum).GetEnumName ((sbyte)0), "#12");
-			try {
-				typeof (MyRealEnum).GetEnumName (false);
-				Assert.Fail ("#13");
-			} catch (ArgumentException) { }
-
+			Assert.AreEqual ("A", typeof (MyRealEnum).GetEnumName (false), "#13");
 			Assert.AreEqual ("A", typeof (MyRealEnum).GetEnumName ((short)0), "#14");
 			Assert.AreEqual ("A", typeof (MyRealEnum).GetEnumName ((ushort)0), "#15");
-			try {
-				typeof (MyRealEnum).GetEnumName ('c');
-				Assert.Fail ("#16");
-			} catch (ArgumentException) { }
+			Assert.IsNull (typeof (MyRealEnum).GetEnumName ('c'), "#16");
 
 			Assert.AreEqual ("A", typeof (MyRealEnum).GetEnumName ((int)0), "#17");
 			Assert.AreEqual ("A", typeof (MyRealEnum).GetEnumName ((uint)0), "#18");
@@ -3691,18 +3694,12 @@ PublicKeyToken=b77a5c561934e089"));
 
 			Assert.AreEqual ("A", typeof (MyRealEnum2).GetEnumName ((byte)0), "#23");
 			Assert.AreEqual ("A", typeof (MyRealEnum2).GetEnumName ((sbyte)0), "#24");
-			try {
-				typeof (MyRealEnum2).GetEnumName (false);
-				Assert.Fail ("#22", "#25");
-			} catch (ArgumentException) { }
+			Assert.AreEqual ("A", typeof (MyRealEnum2).GetEnumName (false), "#25");
 
 			Assert.AreEqual ("A", typeof (MyRealEnum2).GetEnumName ((short)0), "#26");
 			Assert.AreEqual ("A", typeof (MyRealEnum2).GetEnumName ((ushort)0), "#27");
 
-			try {
-				typeof (MyRealEnum2).GetEnumName ('c');
-				Assert.Fail ("#28");
-			} catch (ArgumentException) { }
+			Assert.IsNull (typeof (MyRealEnum2).GetEnumName ('c'), "#28");
 
 			Assert.AreEqual ("A", typeof (MyRealEnum2).GetEnumName ((int)0), "#29");
 			Assert.AreEqual ("A", typeof (MyRealEnum2).GetEnumName ((uint)0), "#30");
@@ -3752,7 +3749,7 @@ PublicKeyToken=b77a5c561934e089"));
 			try {
 				typeof (MyRealEnum).IsEnumDefined (true);
 				Assert.Fail ("#6");
-			} catch (InvalidOperationException) { }
+			} catch (ArgumentException) { }
 
 			try {
 				typeof (MyRealEnum).IsEnumDefined (MyRealEnum2.A);
@@ -3762,7 +3759,7 @@ PublicKeyToken=b77a5c561934e089"));
 			try {
 				typeof (MyRealEnum).IsEnumDefined (typeof (MyRealEnum));
 				Assert.Fail ("#8");
-			} catch (InvalidOperationException) { }
+			} catch (ArgumentException) { }
 
 			Assert.IsTrue (typeof (MyRealEnum).IsEnumDefined ((short)0), "#9");
 			Assert.IsFalse (typeof (MyRealEnum).IsEnumDefined ((short)88), "#10");

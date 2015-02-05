@@ -39,9 +39,7 @@ namespace System.Security.Principal {
 	[Serializable]
 	[ComVisible (true)]
 	public class WindowsIdentity :
-#if NET_4_5
 	System.Security.Claims.ClaimsIdentity,
-#endif
 	IIdentity, IDeserializationCallback, ISerializable, IDisposable {
 		private IntPtr _token;
 		private string _type;
@@ -51,6 +49,9 @@ namespace System.Security.Principal {
 		private SerializationInfo _info;
 
 		static private IntPtr invalidWindows = IntPtr.Zero;
+
+		[NonSerialized]
+		public new const string DefaultIssuer = "AD AUTHORITY";
 
 		[SecurityPermission (SecurityAction.Demand, ControlPrincipal=true)]
 		public WindowsIdentity (IntPtr userToken) 
@@ -172,9 +173,7 @@ namespace System.Security.Principal {
 		}
 
 		// properties
-#if NET_4_5
 		sealed override
-#endif
 		public string AuthenticationType {
 			get { return _type; }
 		}
@@ -184,11 +183,7 @@ namespace System.Security.Principal {
 			get { return (_account == WindowsAccountType.Anonymous); }
 		}
 
-#if NET_4_5
 		override
-#else
-		virtual
-#endif
 		public bool IsAuthenticated
 		{
 			get { return _authenticated; }
@@ -204,11 +199,7 @@ namespace System.Security.Principal {
 			get { return (_account == WindowsAccountType.System); }
 		}
 
-#if NET_4_5
 		override
-#else
-		virtual
-#endif
 		public string Name
 		{
 			get {

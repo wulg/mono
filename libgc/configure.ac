@@ -114,6 +114,17 @@ case "$THREADS" in
 	AC_DEFINE(THREAD_LOCAL_ALLOC)
 	THREADDLLIBS="-lpthread -lrt"
 	;;
+     *-*-kfreebsd*-gnu)
+	AC_DEFINE(GC_FREEBSD_THREADS)
+	INCLUDES="$INCLUDES -pthread"
+	THREADDLLIBS=-pthread
+	AC_DEFINE(_REENTRANT)
+	if test "${enable_parallel_mark}" = yes; then
+		AC_DEFINE(PARALLEL_MARK)
+	fi
+	AC_DEFINE(THREAD_LOCAL_ALLOC)
+	AC_DEFINE(USE_COMPILER_TLS)
+	;;
       *-*-freebsd*)
 	AC_DEFINE(GC_FREEBSD_THREADS)
 	if test "x$PTHREAD_CFLAGS" != "x"; then
@@ -530,6 +541,12 @@ fi
 
 AC_ARG_ENABLE(quiet-build, [  --enable-quiet-build  Enable quiet libgc build (on by default)], enable_quiet_build=$enableval, enable_quiet_build=yes)
 AM_CONDITIONAL(USE_LIBDIR, test -z "$with_cross_host")
+
+AC_ARG_ENABLE(werror, [  --enable-werror Pass -Werror to the C compiler], werror_flag=$enableval, werror_flag=no)
+if test x$werror_flag = xyes; then
+	WERROR_CFLAGS="-Werror"
+fi
+AC_SUBST([WERROR_CFLAGS])
 
 if test "${multilib}" = "yes"; then
   multilib_arg="--enable-multilib"

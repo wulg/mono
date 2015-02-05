@@ -66,7 +66,7 @@ namespace MonoTests.Microsoft.Build.Execution
 			var prop = proj.Properties.First (p => p.Name=="P");
 			Assert.AreEqual ("valid", prop.EvaluatedValue, "#2");
 			Assert.IsNotNull (proj.GetProperty ("MSBuildProjectDirectory"), "#3");
-			Assert.AreEqual ("2.0", proj.ToolsVersion, "#4");
+			Assert.AreEqual ("4.0", proj.ToolsVersion, "#4");
 		}
 		
 		[Test]
@@ -290,6 +290,111 @@ namespace MonoTests.Microsoft.Build.Execution
 			var p = proj.GetProperty ("DebugXXX");
 			Assert.IsNotNull (p, "#1");
 			Assert.AreEqual ("False", p.EvaluatedValue, "#2");
+		}
+
+		[Test]
+		public void ConditionalExpression ()
+		{
+			string project_xml = @"<Project xmlns='http://schemas.microsoft.com/developer/msbuild/2003'>
+	<PropertyGroup>
+		<NoCompilerStandardLib>true</NoCompilerStandardLib>
+                <ResolveAssemblyReferencesDependsOn>$(ResolveAssemblyReferencesDependsOn);_AddCorlibReference</ResolveAssemblyReferencesDependsOn>
+        </PropertyGroup>
+</Project>";
+			var xml = XmlReader.Create (new StringReader (project_xml));
+			var root = ProjectRootElement.Create (xml);
+			root.FullPath = "ProjectInstanceTest.ConditionalExpression.proj";
+			var proj = new ProjectInstance (root);
+			var p = proj.GetProperty ("ResolveAssemblyReferencesDependsOn");
+			Assert.IsNotNull (p, "#1");
+			Assert.AreEqual (";_AddCorlibReference", p.EvaluatedValue, "#2");
+		}
+
+		[Test]
+		public void ItemsAndPostEvaluationCondition ()
+		{
+			// target-assigned property X is not considered when evaluating condition for C.
+			string project_xml = @"<Project DefaultTargets='X;Y' xmlns='http://schemas.microsoft.com/developer/msbuild/2003'>
+	<ItemGroup>
+		<A Include='foo.txt' />
+		<B Condition='False' Include='bar.txt' />
+		<C Condition=""'$(X)'=='True'"" Include='baz.txt' />
+        </ItemGroup>
+        <Target Name='X'>
+    		<CreateProperty Value='True'>
+	    		<Output TaskParameter='Value' PropertyName='X' />
+		    </CreateProperty>
+        </Target>
+        <Target Name='Y'>
+		<Error Condition=""'@(C)'==''"" Text='missing C. X is $(X)' />
+        </Target>
+</Project>";
+			var xml = XmlReader.Create (new StringReader (project_xml));
+			var root = ProjectRootElement.Create (xml);
+			root.FullPath = "ProjectInstanceTest.ItemsAndPostEvaluationCondition.proj";
+			var proj = new ProjectInstance (root);
+			Assert.AreEqual (1, proj.Items.Count, "Count1");
+			Assert.IsFalse (proj.Build (), "Build");
+			Assert.AreEqual (1, proj.Items.Count, "Count2");
+		}
+
+		[Test]
+		[Category ("NotWorking")] // until we figure out why it fails on wrench.
+		public void ItemsInTargets ()
+		{
+			string project_xml = @"<Project DefaultTargets='Default' xmlns='http://schemas.microsoft.com/developer/msbuild/2003'>
+	<Target Name='Default'>
+		<PropertyGroup>
+			<_ExplicitMSCorlibPath>$([Microsoft.Build.Utilities.ToolLocationHelper]::GetPathToStandardLibraries ('$(TargetFrameworkIdentifier)', '$(TargetFrameworkVersion)', '$(TargetFrameworkProfile)'))\mscorlib.dll</_ExplicitMSCorlibPath>
+		</PropertyGroup>
+		<ItemGroup>
+			<_ExplicitReference
+				Include='$(_ExplicitMSCorlibPath)'
+				Condition='Exists($(_ExplicitMSCorlibPath))'>
+				<Private>false</Private>
+			</_ExplicitReference>
+		</ItemGroup>
+	</Target>
+	<Import Project='$(MSBuildBinPath)\\Microsoft.CSharp.targets' />
+</Project>";
+			var xml = XmlReader.Create (new StringReader (project_xml));
+			var root = ProjectRootElement.Create (xml);
+			root.FullPath = "ProjectInstanceTest.ConditionalExpression.proj";
+			var proj = new ProjectInstance (root, null, "4.0", ProjectCollection.GlobalProjectCollection);
+			proj.Build ();
+			// make sure the property value expansion is done successfully.
+			Assert.IsTrue (!string.IsNullOrEmpty (proj.GetPropertyValue ("_ExplicitMSCorlibPath")), "premise: propertyValue by ToolLocationHelper func call");
+			var items = proj.GetItems ("_ExplicitReference");
+			// make sure items are stored after build.
+			Assert.IsTrue (items.Any (), "items.Any");
+			Assert.IsTrue (!string.IsNullOrEmpty (items.First ().EvaluatedInclude), "item.EvaluatedInclude");
+		}
+
+		[Test]
+		[Category ("NotWorking")]
+		public void ConditionalCyclicDependence ()
+		{
+			string project_xml = @"<Project DefaultTargets='Build' xmlns='http://schemas.microsoft.com/developer/msbuild/2003'>
+	<PropertyGroup>
+		<C>False</C>
+	</PropertyGroup>
+	<Target Name='Build' DependsOnTargets='ResolveReferences' />
+	<Target Name='Build2' DependsOnTargets='Bar' />
+	<Target Name='ResolveReferences' DependsOnTargets='Foo;Bar' />
+	<Target Name='Foo'>
+		<CreateProperty Value='True'>
+			<Output TaskParameter='Value' PropertyName='C' />
+		</CreateProperty>
+	</Target>
+	<Target Name='Bar' Condition='!($(C))' DependsOnTargets='ResolveReferences'>
+	</Target>
+</Project>";
+			var xml = XmlReader.Create (new StringReader (project_xml));
+			var root = ProjectRootElement.Create (xml);
+			root.FullPath = "ProjectInstanceTest.ConditionalCyclicDependence.proj";
+			var proj = new ProjectInstance (root, null, "4.0", ProjectCollection.GlobalProjectCollection);
+			Assert.IsTrue (proj.Build (), "#1");
+			Assert.IsFalse (proj.Build ("Build2", new ILogger [0]), "#2");
 		}
 	}
 	

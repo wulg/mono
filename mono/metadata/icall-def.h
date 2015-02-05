@@ -115,9 +115,6 @@ ICALL(BUFFER_2, "ByteLengthInternal", ves_icall_System_Buffer_ByteLengthInternal
 ICALL(BUFFER_3, "GetByteInternal", ves_icall_System_Buffer_GetByteInternal)
 ICALL(BUFFER_4, "SetByteInternal", ves_icall_System_Buffer_SetByteInternal)
 
-ICALL_TYPE(CHAR, "System.Char", CHAR_1)
-ICALL(CHAR_1, "GetDataTablePointers", ves_icall_System_Char_GetDataTablePointers)
-
 ICALL_TYPE (COMPO_W, "System.ComponentModel.Win32Exception", COMPO_W_1)
 ICALL (COMPO_W_1, "W32ErrorMessage", ves_icall_System_ComponentModel_Win32Exception_W32ErrorMessage)
 
@@ -137,16 +134,11 @@ ICALL(CONSOLE_3, "SetBreak", ves_icall_System_ConsoleDriver_SetBreak )
 ICALL(CONSOLE_4, "SetEcho", ves_icall_System_ConsoleDriver_SetEcho )
 ICALL(CONSOLE_5, "TtySetup", ves_icall_System_ConsoleDriver_TtySetup )
 
-ICALL_TYPE(CONVERT, "System.Convert", CONVERT_1)
-ICALL(CONVERT_1, "InternalFromBase64CharArray", InternalFromBase64CharArray )
-ICALL(CONVERT_2, "InternalFromBase64String", InternalFromBase64String )
-
 ICALL_TYPE(TZONE, "System.CurrentSystemTimeZone", TZONE_1)
 ICALL(TZONE_1, "GetTimeZoneData", ves_icall_System_CurrentSystemTimeZone_GetTimeZoneData)
 
 ICALL_TYPE(DTIME, "System.DateTime", DTIME_1)
-ICALL(DTIME_1, "GetNow", mono_100ns_datetime)
-ICALL(DTIME_2, "GetTimeMonotonic", mono_100ns_ticks)
+ICALL(DTIME_1, "GetSystemTimeAsFileTime", mono_100ns_datetime)
 
 #ifndef DISABLE_DECIMAL
 ICALL_TYPE(DECIMAL, "System.Decimal", DECIMAL_1)
@@ -231,12 +223,13 @@ ICALL(STOPWATCH_1, "GetTimestamp", mono_100ns_ticks)
 ICALL_TYPE(DOUBLE, "System.Double", DOUBLE_1)
 ICALL(DOUBLE_1, "ParseImpl",    mono_double_ParseImpl)
 
-ICALL_TYPE(ENUM, "System.Enum", ENUM_1)
+ICALL_TYPE(ENUM, "System.Enum", ENUM_6)
+ICALL(ENUM_6, "InternalHasFlag", ves_icall_System_Enum_InternalHasFlag)
 ICALL(ENUM_1, "ToObject", ves_icall_System_Enum_ToObject)
-ICALL(ENUM_5, "compare_value_to", ves_icall_System_Enum_compare_value_to)
-ICALL(ENUM_4, "get_hashcode", ves_icall_System_Enum_get_hashcode)
-ICALL(ENUM_3, "get_underlying_type", ves_icall_System_Enum_get_underlying_type)
-ICALL(ENUM_2, "get_value", ves_icall_System_Enum_get_value)
+ICALL(ENUM_2, "compare_value_to", ves_icall_System_Enum_compare_value_to)
+ICALL(ENUM_3, "get_hashcode", ves_icall_System_Enum_get_hashcode)
+ICALL(ENUM_4, "get_underlying_type", ves_icall_System_Enum_get_underlying_type)
+ICALL(ENUM_5, "get_value", ves_icall_System_Enum_get_value)
 
 ICALL_TYPE(ENV, "System.Environment", ENV_1)
 ICALL(ENV_1, "Exit", ves_icall_System_Environment_Exit)
@@ -276,6 +269,12 @@ ICALL(GC_7, "get_MaxGeneration", mono_gc_max_generation)
 ICALL(GC_9, "get_ephemeron_tombstone", ves_icall_System_GC_get_ephemeron_tombstone)
 ICALL(GC_8, "register_ephemeron_array", ves_icall_System_GC_register_ephemeron_array)
 
+ICALL_TYPE(CALDATA, "System.Globalization.CalendarData", CALDATA_1)
+ICALL(CALDATA_1, "fill_calendar_data", ves_icall_System_Globalization_CalendarData_fill_calendar_data)
+
+ICALL_TYPE(CHARINFO, "System.Globalization.CharUnicodeInfo", CHARINFO_1)
+ICALL(CHARINFO_1, "GetDataTablePointers", ves_icall_System_Globalization_CharUnicodeInfo_GetDataTablePointers)
+
 ICALL_TYPE(COMPINF, "System.Globalization.CompareInfo", COMPINF_1)
 ICALL(COMPINF_1, "assign_sortkey(object,string,System.Globalization.CompareOptions)", ves_icall_System_Globalization_CompareInfo_assign_sortkey)
 ICALL(COMPINF_2, "construct_compareinfo(string)", ves_icall_System_Globalization_CompareInfo_construct_compareinfo)
@@ -284,8 +283,10 @@ ICALL(COMPINF_4, "internal_compare(string,int,int,string,int,int,System.Globaliz
 ICALL(COMPINF_5, "internal_index(string,int,int,char,System.Globalization.CompareOptions,bool)", ves_icall_System_Globalization_CompareInfo_internal_index_char)
 ICALL(COMPINF_6, "internal_index(string,int,int,string,System.Globalization.CompareOptions,bool)", ves_icall_System_Globalization_CompareInfo_internal_index)
 
-ICALL_TYPE(CULINF, "System.Globalization.CultureInfo", CULINF_2)
-ICALL(CULINF_2, "construct_datetime_format", ves_icall_System_Globalization_CultureInfo_construct_datetime_format)
+ICALL_TYPE(CULDATA, "System.Globalization.CultureData", CULDATA_1)
+ICALL(CULDATA_1, "fill_culture_data", ves_icall_System_Globalization_CultureData_fill_culture_data)
+
+ICALL_TYPE(CULINF, "System.Globalization.CultureInfo", CULINF_5)
 ICALL(CULINF_5, "construct_internal_locale_from_lcid", ves_icall_System_Globalization_CultureInfo_construct_internal_locale_from_lcid)
 ICALL(CULINF_6, "construct_internal_locale_from_name", ves_icall_System_Globalization_CultureInfo_construct_internal_locale_from_name)
 ICALL(CULINF_8, "construct_number_format", ves_icall_System_Globalization_CultureInfo_construct_number_format)
@@ -315,12 +316,14 @@ ICALL(INOW_1, "AddWatch", ves_icall_System_IO_InotifyWatcher_AddWatch)
 ICALL(INOW_2, "GetInotifyInstance", ves_icall_System_IO_InotifyWatcher_GetInotifyInstance)
 ICALL(INOW_3, "RemoveWatch", ves_icall_System_IO_InotifyWatcher_RemoveWatch)
 
-#if defined (TARGET_IOS) || defined (TARGET_ANDROID)
 ICALL_TYPE(MMAPIMPL, "System.IO.MemoryMappedFiles.MemoryMapImpl", MMAPIMPL_1)
-ICALL(MMAPIMPL_1, "mono_filesize_from_fd", mono_filesize_from_fd)
-ICALL(MMAPIMPL_2, "mono_filesize_from_path", mono_filesize_from_path)
-#endif
-
+ICALL(MMAPIMPL_1, "CloseMapping", mono_mmap_close)
+ICALL(MMAPIMPL_2, "ConfigureHandleInheritability", mono_mmap_configure_inheritability)
+ICALL(MMAPIMPL_3, "Flush", mono_mmap_flush)
+ICALL(MMAPIMPL_4, "MapInternal", mono_mmap_map)
+ICALL(MMAPIMPL_5, "OpenFileInternal", mono_mmap_open_file)
+ICALL(MMAPIMPL_6, "OpenHandleInternal", mono_mmap_open_handle)
+ICALL(MMAPIMPL_7, "Unmap", mono_mmap_unmap)
 
 ICALL_TYPE(MONOIO, "System.IO.MonoIO", MONOIO_1)
 ICALL(MONOIO_1, "Close(intptr,System.IO.MonoIOError&)", ves_icall_System_IO_MonoIO_Close)
@@ -441,6 +444,11 @@ ICALL(NDNS_1, "GetHostByAddr_internal(string,string&,string[]&,string[]&)", ves_
 ICALL(NDNS_2, "GetHostByName_internal(string,string&,string[]&,string[]&)", ves_icall_System_Net_Dns_GetHostByName_internal)
 ICALL(NDNS_3, "GetHostName_internal(string&)", ves_icall_System_Net_Dns_GetHostName_internal)
 
+#if defined(PLATFORM_MACOSX) || defined(PLATFORM_BSD)
+ICALL_TYPE(MAC_IFACE_PROPS, "System.Net.NetworkInformation.MacOsIPInterfaceProperties", MAC_IFACE_PROPS_1)
+ICALL(MAC_IFACE_PROPS_1, "ParseRouteInfo_internal", ves_icall_System_Net_NetworkInformation_MacOsIPInterfaceProperties_ParseRouteInfo_internal)
+#endif
+
 ICALL_TYPE(SOCK, "System.Net.Sockets.Socket", SOCK_1)
 ICALL(SOCK_1, "Accept_internal(intptr,int&,bool)", ves_icall_System_Net_Sockets_Socket_Accept_internal)
 ICALL(SOCK_2, "Available_internal(intptr,int&)", ves_icall_System_Net_Sockets_Socket_Available_internal)
@@ -501,10 +509,6 @@ ICALL(ASSEM_15, "InternalGetType", ves_icall_System_Reflection_Assembly_Internal
 ICALL(ASSEM_16, "InternalImageRuntimeVersion", ves_icall_System_Reflection_Assembly_InternalImageRuntimeVersion)
 ICALL(ASSEM_17, "LoadFrom", ves_icall_System_Reflection_Assembly_LoadFrom)
 ICALL(ASSEM_18, "LoadPermissions", ves_icall_System_Reflection_Assembly_LoadPermissions)
-	/*
-	 * Private icalls for the Mono Debugger
-	 */
-ICALL(ASSEM_19, "MonoDebugger_GetMethodToken", ves_icall_MonoDebugger_GetMethodToken)
 
 	/* normal icalls again */
 ICALL(ASSEM_20, "get_EntryPoint", ves_icall_System_Reflection_Assembly_get_EntryPoint)
@@ -799,6 +803,7 @@ ICALL(STRING_8a, "GetLOSLimit", ves_icall_System_String_GetLOSLimit)
 ICALL(STRING_9, "InternalAllocateStr", ves_icall_System_String_InternalAllocateStr)
 ICALL(STRING_10, "InternalIntern", ves_icall_System_String_InternalIntern)
 ICALL(STRING_11, "InternalIsInterned", ves_icall_System_String_InternalIsInterned)
+ICALL(STRING_12, "InternalSetLength", ves_icall_System_String_InternalSetLength)
 
 ICALL_TYPE(TENC, "System.Text.Encoding", TENC_1)
 ICALL(TENC_1, "InternalCodePage", ves_icall_System_Text_Encoding_InternalCodePage)
@@ -809,22 +814,23 @@ ICALL(ILOCK_2, "Add(long&,long)", ves_icall_System_Threading_Interlocked_Add_Lon
 ICALL(ILOCK_3, "CompareExchange(T&,T,T)", ves_icall_System_Threading_Interlocked_CompareExchange_T)
 ICALL(ILOCK_4, "CompareExchange(double&,double,double)", ves_icall_System_Threading_Interlocked_CompareExchange_Double)
 ICALL(ILOCK_5, "CompareExchange(int&,int,int)", ves_icall_System_Threading_Interlocked_CompareExchange_Int)
-ICALL(ILOCK_6, "CompareExchange(intptr&,intptr,intptr)", ves_icall_System_Threading_Interlocked_CompareExchange_IntPtr)
-ICALL(ILOCK_7, "CompareExchange(long&,long,long)", ves_icall_System_Threading_Interlocked_CompareExchange_Long)
-ICALL(ILOCK_8, "CompareExchange(object&,object,object)", ves_icall_System_Threading_Interlocked_CompareExchange_Object)
-ICALL(ILOCK_9, "CompareExchange(single&,single,single)", ves_icall_System_Threading_Interlocked_CompareExchange_Single)
-ICALL(ILOCK_10, "Decrement(int&)", ves_icall_System_Threading_Interlocked_Decrement_Int)
-ICALL(ILOCK_11, "Decrement(long&)", ves_icall_System_Threading_Interlocked_Decrement_Long)
-ICALL(ILOCK_12, "Exchange(T&,T)", ves_icall_System_Threading_Interlocked_Exchange_T)
-ICALL(ILOCK_13, "Exchange(double&,double)", ves_icall_System_Threading_Interlocked_Exchange_Double)
-ICALL(ILOCK_14, "Exchange(int&,int)", ves_icall_System_Threading_Interlocked_Exchange_Int)
-ICALL(ILOCK_15, "Exchange(intptr&,intptr)", ves_icall_System_Threading_Interlocked_Exchange_IntPtr)
-ICALL(ILOCK_16, "Exchange(long&,long)", ves_icall_System_Threading_Interlocked_Exchange_Long)
-ICALL(ILOCK_17, "Exchange(object&,object)", ves_icall_System_Threading_Interlocked_Exchange_Object)
-ICALL(ILOCK_18, "Exchange(single&,single)", ves_icall_System_Threading_Interlocked_Exchange_Single)
-ICALL(ILOCK_19, "Increment(int&)", ves_icall_System_Threading_Interlocked_Increment_Int)
-ICALL(ILOCK_20, "Increment(long&)", ves_icall_System_Threading_Interlocked_Increment_Long)
-ICALL(ILOCK_21, "Read(long&)", ves_icall_System_Threading_Interlocked_Read_Long)
+ICALL(ILOCK_6, "CompareExchange(int&,int,int,bool&)", ves_icall_System_Threading_Interlocked_CompareExchange_Int_Success)
+ICALL(ILOCK_7, "CompareExchange(intptr&,intptr,intptr)", ves_icall_System_Threading_Interlocked_CompareExchange_IntPtr)
+ICALL(ILOCK_8, "CompareExchange(long&,long,long)", ves_icall_System_Threading_Interlocked_CompareExchange_Long)
+ICALL(ILOCK_9, "CompareExchange(object&,object,object)", ves_icall_System_Threading_Interlocked_CompareExchange_Object)
+ICALL(ILOCK_10, "CompareExchange(single&,single,single)", ves_icall_System_Threading_Interlocked_CompareExchange_Single)
+ICALL(ILOCK_11, "Decrement(int&)", ves_icall_System_Threading_Interlocked_Decrement_Int)
+ICALL(ILOCK_12, "Decrement(long&)", ves_icall_System_Threading_Interlocked_Decrement_Long)
+ICALL(ILOCK_13, "Exchange(T&,T)", ves_icall_System_Threading_Interlocked_Exchange_T)
+ICALL(ILOCK_14, "Exchange(double&,double)", ves_icall_System_Threading_Interlocked_Exchange_Double)
+ICALL(ILOCK_15, "Exchange(int&,int)", ves_icall_System_Threading_Interlocked_Exchange_Int)
+ICALL(ILOCK_16, "Exchange(intptr&,intptr)", ves_icall_System_Threading_Interlocked_Exchange_IntPtr)
+ICALL(ILOCK_17, "Exchange(long&,long)", ves_icall_System_Threading_Interlocked_Exchange_Long)
+ICALL(ILOCK_18, "Exchange(object&,object)", ves_icall_System_Threading_Interlocked_Exchange_Object)
+ICALL(ILOCK_19, "Exchange(single&,single)", ves_icall_System_Threading_Interlocked_Exchange_Single)
+ICALL(ILOCK_20, "Increment(int&)", ves_icall_System_Threading_Interlocked_Increment_Int)
+ICALL(ILOCK_21, "Increment(long&)", ves_icall_System_Threading_Interlocked_Increment_Long)
+ICALL(ILOCK_22, "Read(long&)", ves_icall_System_Threading_Interlocked_Read_Long)
 
 ICALL_TYPE(ITHREAD, "System.Threading.InternalThread", ITHREAD_1)
 ICALL(ITHREAD_1, "Thread_free_internal", ves_icall_System_Threading_InternalThread_Thread_free_internal)
@@ -870,6 +876,7 @@ ICALL(THREAD_4, "FreeLocalSlotValues", mono_thread_free_local_slot_values)
 ICALL(THREAD_55, "GetAbortExceptionState", ves_icall_System_Threading_Thread_GetAbortExceptionState)
 ICALL(THREAD_7, "GetDomainID", ves_icall_System_Threading_Thread_GetDomainID)
 ICALL(THREAD_8, "GetName_internal(System.Threading.InternalThread)", ves_icall_System_Threading_Thread_GetName_internal)
+ICALL(THREAD_57, "GetPriority(System.Threading.InternalThread)", ves_icall_System_Threading_Thread_GetPriority)
 ICALL(THREAD_11, "GetState(System.Threading.InternalThread)", ves_icall_System_Threading_Thread_GetState)
 ICALL(THREAD_53, "Interrupt_internal(System.Threading.InternalThread)", ves_icall_System_Threading_Thread_Interrupt_internal)
 ICALL(THREAD_12, "Join_internal(System.Threading.InternalThread,int,intptr)", ves_icall_System_Threading_Thread_Join_internal)
@@ -877,6 +884,7 @@ ICALL(THREAD_13, "MemoryBarrier", ves_icall_System_Threading_Thread_MemoryBarrie
 ICALL(THREAD_14, "ResetAbort_internal()", ves_icall_System_Threading_Thread_ResetAbort)
 ICALL(THREAD_15, "Resume_internal()", ves_icall_System_Threading_Thread_Resume)
 ICALL(THREAD_18, "SetName_internal(System.Threading.InternalThread,string)", ves_icall_System_Threading_Thread_SetName_internal)
+ICALL(THREAD_58, "SetPriority(System.Threading.InternalThread,int)", ves_icall_System_Threading_Thread_SetPriority)
 ICALL(THREAD_21, "SetState(System.Threading.InternalThread,System.Threading.ThreadState)", ves_icall_System_Threading_Thread_SetState)
 ICALL(THREAD_22, "Sleep_internal", ves_icall_System_Threading_Thread_Sleep_internal)
 ICALL(THREAD_54, "SpinWait_nop", ves_icall_System_Threading_Thread_SpinWait_nop)
@@ -919,6 +927,9 @@ ICALL(THREADP_3, "GetMinThreads", ves_icall_System_Threading_ThreadPool_GetMinTh
 ICALL(THREADP_35, "SetMaxThreads", ves_icall_System_Threading_ThreadPool_SetMaxThreads)
 ICALL(THREADP_4, "SetMinThreads", ves_icall_System_Threading_ThreadPool_SetMinThreads)
 ICALL(THREADP_5, "pool_queue", icall_append_job)
+
+ICALL_TYPE(TTIMER, "System.Threading.Timer", TTIMER_1)
+ICALL(TTIMER_1, "GetTimeMonotonic", mono_100ns_ticks)
 
 ICALL_TYPE(VOLATILE, "System.Threading.Volatile", VOLATILE_28)
 ICALL(VOLATILE_28, "Read(T&)", ves_icall_System_Threading_Volatile_Read_T)

@@ -27,8 +27,6 @@
 #include <sys/mount.h>
 #endif
 #include <sys/types.h>
-#include <dirent.h>
-#include <fnmatch.h>
 #include <stdio.h>
 #include <utime.h>
 #ifdef __linux__
@@ -3238,9 +3236,9 @@ extern gboolean SetFileAttributes (const gunichar2 *name, guint32 attrs)
 	 * catch that case here.
 	 */
 	if (attrs & FILE_ATTRIBUTE_READONLY) {
-		result = _wapi_chmod (utf8_name, buf.st_mode & ~(S_IWRITE | S_IWOTH | S_IWGRP));
+		result = _wapi_chmod (utf8_name, buf.st_mode & ~(S_IWUSR | S_IWOTH | S_IWGRP));
 	} else {
-		result = _wapi_chmod (utf8_name, buf.st_mode | S_IWRITE);
+		result = _wapi_chmod (utf8_name, buf.st_mode | S_IWUSR);
 	}
 
 	/* Ignore the other attributes for now */
@@ -3904,7 +3902,7 @@ GetLogicalDriveStrings_Mtab (guint32 len, gunichar2 *buf)
 }
 #endif
 
-#if (defined(HAVE_STATVFS) || defined(HAVE_STATFS)) && !defined(PLATFORM_ANDROID)
+#if defined(HAVE_STATVFS) || defined(HAVE_STATFS)
 gboolean GetDiskFreeSpaceEx(const gunichar2 *path_name, WapiULargeInteger *free_bytes_avail,
 			    WapiULargeInteger *total_number_of_bytes,
 			    WapiULargeInteger *total_number_of_free_bytes)
@@ -3943,7 +3941,11 @@ gboolean GetDiskFreeSpaceEx(const gunichar2 *path_name, WapiULargeInteger *free_
 		block_size = fsstat.f_frsize;
 #elif defined(HAVE_STATFS)
 		ret = statfs (utf8_path_name, &fsstat);
+#if defined (MNT_RDONLY)
 		isreadonly = ((fsstat.f_flags & MNT_RDONLY) == MNT_RDONLY);
+#elif defined (MS_RDONLY)
+		isreadonly = ((fsstat.f_flags & MS_RDONLY) == MS_RDONLY);
+#endif
 		block_size = fsstat.f_bsize;
 #endif
 	} while(ret == -1 && errno == EINTR);
@@ -4260,6 +4262,7 @@ guint32 GetDriveType(const gunichar2 *root_path_name)
 	return (drive_type);
 }
 
+#if defined (PLATFORM_MACOSX) || defined (__linux__) || defined(PLATFORM_BSD) || defined(__native_client__) || defined(__FreeBSD_kernel__)
 static gchar*
 get_fstypename (gchar *utfpath)
 {
@@ -4287,7 +4290,6 @@ get_fstypename (gchar *utfpath)
 }
 
 /* Linux has struct statfs which has a different layout */
-#if defined (PLATFORM_MACOSX) || defined (__linux__) || defined(PLATFORM_BSD) || defined(__native_client__)
 gboolean
 GetVolumeInformation (const gunichar2 *path, gunichar2 *volumename, int volumesize, int *outserial, int *maxcomp, int *fsflags, gunichar2 *fsbuffer, int fsbuffersize)
 {

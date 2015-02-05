@@ -22,6 +22,9 @@ monoutils_sources = \
 	mono-counters.c		\
 	mono-compiler.h		\
 	mono-dl.c		\
+	mono-dl-windows.c	\
+	mono-dl-darwin.c	\
+	mono-dl-posix.c		\
 	mono-dl.h		\
 	mono-internal-hash.c	\
 	mono-internal-hash.h	\
@@ -32,6 +35,7 @@ monoutils_sources = \
 	mono-math.c  		\
 	mono-mmap.c  		\
 	mono-mmap.h  		\
+	mono-mmap-internal.h	\
 	mono-mutex.c  		\
 	mono-mutex.h  		\
 	mono-networkinterfaces.c		\
@@ -99,6 +103,10 @@ monoutils_sources = \
 	mono-threads-mach.c	\
 	mono-threads-mach-helper.c	\
 	mono-threads-windows.c	\
+	mono-threads-linux.c	\
+	mono-threads-freebsd.c	\
+	mono-threads-openbsd.c	\
+	mono-threads-android.c	\
 	mono-threads.h	\
 	mono-tls.h	\
 	mono-tls.c	\
@@ -110,7 +118,17 @@ monoutils_sources = \
 	mono-hwcap.c	\
 	bsearch.h	\
 	bsearch.c	\
-	mono-signal-handler.h
+	mono-signal-handler.h	\
+	mono-conc-hashtable.h	\
+	mono-conc-hashtable.c	\
+	sha1.h		\
+	sha1.c	\
+	networking.c	\
+	networking-posix.c	\
+	networking-fallback.c	\
+	networking-missing.c	\
+	networking-windows.c	\
+	networking.h
 
 arch_sources = 
 

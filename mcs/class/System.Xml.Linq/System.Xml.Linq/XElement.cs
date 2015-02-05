@@ -135,7 +135,6 @@ namespace System.Xml.Linq
 			return element.Value == null ? (DateTime?) null : XUtil.ToDateTime (element.Value);
 		}
 
-#if !TARGET_JVM // Same as for System.Xml.XmlConvert.ToDateTimeOffset
 
 		[CLSCompliant (false)]
 		public static explicit operator DateTimeOffset (XElement element)
@@ -154,7 +153,6 @@ namespace System.Xml.Linq
 			return element.Value == null ? (DateTimeOffset?) null : XmlConvert.ToDateTimeOffset (element.Value);
 		}
 
-#endif
 
 		[CLSCompliant (false)]
 		public static explicit operator decimal (XElement element)
@@ -474,7 +472,6 @@ namespace System.Xml.Linq
 			}
 		}
 
-#if NET_4_0
 		public static XElement Load (Stream stream)
 		{
 			return Load (stream, LoadOptions.None);
@@ -489,7 +486,6 @@ namespace System.Xml.Linq
 				return LoadCore (r, options);
 			}
 		}
-#endif
 
 		internal static XElement LoadCore (XmlReader r, LoadOptions options)
 		{
@@ -556,10 +552,8 @@ namespace System.Xml.Linq
 
 			if ((options & SaveOptions.DisableFormatting) == SaveOptions.None)
 				s.Indent = true;
-#if NET_4_0
 			if ((options & SaveOptions.OmitDuplicateNamespaces) == SaveOptions.OmitDuplicateNamespaces)
 				s.NamespaceHandling |= NamespaceHandling.OmitDuplicates;
-#endif
 			using (XmlWriter w = XmlWriter.Create (fileName, s)) {
 				Save (w);
 			}
@@ -576,10 +570,8 @@ namespace System.Xml.Linq
 			
 			if ((options & SaveOptions.DisableFormatting) == SaveOptions.None)
 				s.Indent = true;
-#if NET_4_0
 			if ((options & SaveOptions.OmitDuplicateNamespaces) == SaveOptions.OmitDuplicateNamespaces)
 				s.NamespaceHandling |= NamespaceHandling.OmitDuplicates;
-#endif
 			using (XmlWriter w = XmlWriter.Create (textWriter, s)) {
 				Save (w);
 			}
@@ -590,7 +582,6 @@ namespace System.Xml.Linq
 			WriteTo (writer);
 		}
 
-#if NET_4_0
 		public void Save (Stream stream)
 		{
 			Save (stream, SaveOptions.None);
@@ -608,7 +599,6 @@ namespace System.Xml.Linq
 				Save (writer);
 			}
 		}
-#endif
 		public IEnumerable <XElement> AncestorsAndSelf ()
 		{
 			return GetAncestorList (null, true);

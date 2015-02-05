@@ -25,8 +25,7 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 //
-#if NET_4_5
-using System;
+
 using System.Collections.Generic;
 using System.Security.Principal;
 using System.Runtime.Serialization;
@@ -59,14 +58,16 @@ namespace System.Security.Claims {
 			if (identities == null)
 				throw new ArgumentNullException ("identities");
 			
-			identities = new List<ClaimsIdentity> (identities);
+			this.identities = new List<ClaimsIdentity> (identities);
 		}
 
 		public ClaimsPrincipal (IIdentity identity)
 		{
 			if (identity == null)
 				throw new ArgumentNullException ("identity");
-			// TODO
+
+			identities = new List<ClaimsIdentity> ();
+			identities.Add (identity as ClaimsIdentity ?? new ClaimsIdentity (identity));
 		}
 
 		public ClaimsPrincipal (IPrincipal principal)
@@ -184,7 +185,29 @@ namespace System.Security.Claims {
 			}
 			return false;
 		}
+
+		public virtual bool HasClaim (string type, string value)
+		{
+			foreach(var claim in Claims){
+				if (claim.Type == type && claim.Value == value)
+					return true;
+			}
+			return false;
+		}
+
+		public virtual Claim FindFirst (string type)
+		{
+			if (type == null)
+				throw new ArgumentNullException ("type");
+			return FindFirst(x => x.Type == type);
+		}
+
+		public virtual IEnumerable<Claim> FindAll (string type)
+		{
+			if (type == null)
+				throw new ArgumentNullException ("type");
+			return FindAll(x => x.Type == type);
+		}
 		
 	}
 }
-#endif

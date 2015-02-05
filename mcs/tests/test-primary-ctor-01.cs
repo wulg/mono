@@ -1,10 +1,7 @@
+// Compiler options: -langversion:experimental
 class Simple(int arg)
 {
-	int Property {
-		get {
-			return arg;
-		}
-	}
+	int Property { get; } = arg;
 
 	public static int Main ()
 	{
@@ -22,9 +19,5 @@ class Simple(int arg)
 
 struct S(decimal arg)
 {
-	internal decimal Property {
-		get {
-			return arg;
-		}
-	}
+	internal decimal Property { get; } = arg;
 }

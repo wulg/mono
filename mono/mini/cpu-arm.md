@@ -48,7 +48,6 @@
 #
 # See the code in mini-x86.c for more details on how the specifiers are used.
 #
-memory_barrier: len:8 clob:a
 nop: len:4
 relaxed_nop: len:4
 break: len:4
@@ -58,6 +57,7 @@ switch: src1:i len:12
 # See the comment in resume_from_signal_handler, we can't copy the fp regs from sigctx to MonoContext on linux,
 # since the corresponding sigctx structures are not well defined.
 seq_point: len:38 clob:c
+il_seq_point: len:0
 
 throw: src1:i len:24
 rethrow: src1:i len:20
@@ -135,6 +135,8 @@ loadu4_memindex: dest:i src1:b src2:i len:4
 loadu4_mem: dest:i len:8
 move: dest:i src1:i len:4
 fmove: dest:f src1:f len:4
+move_f_to_i4: dest:i src1:f len:28
+move_i4_to_f: dest:f src1:i len:8
 add_imm: dest:i src1:i len:12
 sub_imm: dest:i src1:i len:12
 mul_imm: dest:i src1:i len:12
@@ -211,7 +213,7 @@ sbb_imm: dest:i src1:i len:12
 br_reg: src1:i len:8
 bigmul: len:8 dest:l src1:i src2:i
 bigmul_un: len:8 dest:l src1:i src2:i
-tls_get: len:8 dest:i clob:c
+tls_get: len:24 dest:i clob:c
 
 # 32 bit opcodes
 int_add: dest:i src1:i src2:i len:4
@@ -347,6 +349,23 @@ gc_liveness_use: len:0
 gc_spill_slot_liveness_def: len:0
 gc_param_slot_liveness_def: len:0
 
+atomic_add_i4: dest:i src1:i src2:i len:64
 atomic_exchange_i4: dest:i src1:i src2:i len:64
 atomic_cas_i4: dest:i src1:i src2:i src3:i len:64
-atomic_add_new_i4: dest:i src1:i src2:i len:64
+memory_barrier: len:8 clob:a
+atomic_load_i1: dest:i src1:b len:28
+atomic_load_u1: dest:i src1:b len:28
+atomic_load_i2: dest:i src1:b len:28
+atomic_load_u2: dest:i src1:b len:28
+atomic_load_i4: dest:i src1:b len:28
+atomic_load_u4: dest:i src1:b len:28
+atomic_load_r4: dest:f src1:b len:80
+atomic_load_r8: dest:f src1:b len:32
+atomic_store_i1: dest:b src1:i len:28
+atomic_store_u1: dest:b src1:i len:28
+atomic_store_i2: dest:b src1:i len:28
+atomic_store_u2: dest:b src1:i len:28
+atomic_store_i4: dest:b src1:i len:28
+atomic_store_u4: dest:b src1:i len:28
+atomic_store_r4: dest:b src1:f len:80
+atomic_store_r8: dest:b src1:f len:32

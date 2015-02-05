@@ -15,6 +15,7 @@
 #include <glib.h>
 
 #include <mono/io-layer/io-layer.h>
+#include <mono/metadata/object.h>
 #include "mono/utils/mono-compiler.h"
 #include "mono/utils/mono-membar.h"
 
@@ -39,7 +40,13 @@ typedef enum {
 	ThreadApartmentState_Unknown = 0x00000002
 } MonoThreadApartmentState;
 
-typedef void (*MonoThreadNotifyPendingExcFunc) (void);
+typedef enum {
+	ThreadPriority_Lowest = 0,
+	ThreadPriority_BelowNormal = 1,
+	ThreadPriority_Normal = 2,
+	ThreadPriority_AboveNormal = 3,
+	ThreadPriority_Highest = 4
+} MonoThreadPriority;
 
 #define SPECIAL_STATIC_NONE 0
 #define SPECIAL_STATIC_THREAD 1
@@ -53,12 +60,14 @@ typedef LPTHREAD_START_ROUTINE WapiThreadStart;
 typedef struct _MonoInternalThread MonoInternalThread;
 
 typedef void (*MonoThreadCleanupFunc) (MonoInternalThread* thread);
+/* INFO has type MonoThreadInfo* */
+typedef void (*MonoThreadNotifyPendingExcFunc) (gpointer info);
 
 MonoInternalThread* mono_thread_create_internal (MonoDomain *domain, gpointer func, gpointer arg, gboolean threadpool_thread, guint32 stack_size) MONO_INTERNAL;
 
 void mono_threads_install_cleanup (MonoThreadCleanupFunc func) MONO_INTERNAL;
 
-void ves_icall_System_Threading_Thread_ConstructInternalThread (MonoThread *this) MONO_INTERNAL;
+void ves_icall_System_Threading_Thread_ConstructInternalThread (MonoThread *this_obj) MONO_INTERNAL;
 HANDLE ves_icall_System_Threading_Thread_Thread_internal(MonoThread *this_obj, MonoObject *start) MONO_INTERNAL;
 void ves_icall_System_Threading_InternalThread_Thread_free_internal(MonoInternalThread *this_obj, HANDLE thread) MONO_INTERNAL;
 void ves_icall_System_Threading_Thread_Sleep_internal(gint32 ms) MONO_INTERNAL;
@@ -67,6 +76,8 @@ gint32 ves_icall_System_Threading_Thread_GetDomainID (void) MONO_INTERNAL;
 gboolean ves_icall_System_Threading_Thread_Yield (void) MONO_INTERNAL;
 MonoString* ves_icall_System_Threading_Thread_GetName_internal (MonoInternalThread *this_obj) MONO_INTERNAL;
 void ves_icall_System_Threading_Thread_SetName_internal (MonoInternalThread *this_obj, MonoString *name) MONO_INTERNAL;
+int ves_icall_System_Threading_Thread_GetPriority (MonoInternalThread *thread) MONO_INTERNAL;
+void ves_icall_System_Threading_Thread_SetPriority (MonoInternalThread *thread, int priority) MONO_INTERNAL;
 MonoObject* ves_icall_System_Threading_Thread_GetCachedCurrentCulture (MonoInternalThread *this_obj) MONO_INTERNAL;
 void ves_icall_System_Threading_Thread_SetCachedCurrentCulture (MonoThread *this_obj, MonoObject *culture) MONO_INTERNAL;
 MonoObject* ves_icall_System_Threading_Thread_GetCachedCurrentUICulture (MonoInternalThread *this_obj) MONO_INTERNAL;
@@ -104,6 +115,7 @@ gfloat ves_icall_System_Threading_Interlocked_Exchange_Single(gfloat *location, 
 gdouble ves_icall_System_Threading_Interlocked_Exchange_Double(gdouble *location, gdouble value) MONO_INTERNAL;
 
 gint32 ves_icall_System_Threading_Interlocked_CompareExchange_Int(gint32 *location, gint32 value, gint32 comparand) MONO_INTERNAL;
+gint32 ves_icall_System_Threading_Interlocked_CompareExchange_Int_Success(gint32 *location, gint32 value, gint32 comparand, MonoBoolean *success) MONO_INTERNAL;
 gint64 ves_icall_System_Threading_Interlocked_CompareExchange_Long(gint64 *location, gint64 value, gint64 comparand) MONO_INTERNAL;
 MonoObject *ves_icall_System_Threading_Interlocked_CompareExchange_Object(MonoObject **location, MonoObject *value, MonoObject *comparand) MONO_INTERNAL;
 gpointer ves_icall_System_Threading_Interlocked_CompareExchange_IntPtr(gpointer *location, gpointer value, gpointer comparand) MONO_INTERNAL;
@@ -184,7 +196,7 @@ void mono_special_static_data_free_slot (guint32 offset, guint32 size) MONO_INTE
 uint32_t mono_thread_alloc_tls   (MonoReflectionType *type) MONO_INTERNAL;
 void     mono_thread_destroy_tls (uint32_t tls_offset) MONO_INTERNAL;
 void     mono_thread_destroy_domain_tls (MonoDomain *domain) MONO_INTERNAL;
-void mono_thread_free_local_slot_values (int slot, MonoBoolean thread_local) MONO_INTERNAL;
+void mono_thread_free_local_slot_values (int slot, MonoBoolean is_thread_local) MONO_INTERNAL;
 void mono_thread_current_check_pending_interrupt (void) MONO_INTERNAL;
 
 void mono_thread_set_state (MonoInternalThread *thread, MonoThreadState state) MONO_INTERNAL;

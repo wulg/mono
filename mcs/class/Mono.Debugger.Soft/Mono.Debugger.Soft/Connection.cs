@@ -155,9 +155,12 @@ namespace Mono.Debugger.Soft
 
 	[Flags]
 	enum InvokeFlags {
-		NONE = 0x0,
-		DISABLE_BREAKPOINTS = 0x1,
-		SINGLE_THREADED = 0x2
+		NONE = 0,
+		DISABLE_BREAKPOINTS = 1,
+		SINGLE_THREADED = 2,
+		OUT_THIS = 4,
+		OUT_ARGS = 8,
+		VIRTUAL = 16,
 	}
 
 	enum ElementType {
@@ -404,8 +407,7 @@ namespace Mono.Debugger.Soft
 
 		static readonly bool EnableConnectionLogging = !String.IsNullOrEmpty (Environment.GetEnvironmentVariable ("MONO_SDB_LOG"));
 		static int ConnectionId;
-		readonly StreamWriter LoggingStream = EnableConnectionLogging ? 
-			new StreamWriter (string.Format ("/tmp/sdb_conn_log_{0}", ConnectionId++), false) : null;
+		readonly StreamWriter LoggingStream;
 
 		/*
 		 * Th version of the wire-protocol implemented by the library. The library
@@ -415,7 +417,7 @@ namespace Mono.Debugger.Soft
 		 * with newer runtimes, and vice versa.
 		 */
 		internal const int MAJOR_VERSION = 2;
-		internal const int MINOR_VERSION = 34;
+		internal const int MINOR_VERSION = 40;
 
 		enum WPSuspendPolicy {
 			NONE = 0,
@@ -583,7 +585,8 @@ namespace Mono.Debugger.Soft
 		enum CmdStackFrame {
 			GET_VALUES = 1,
 			GET_THIS = 2,
-			SET_VALUES = 3
+			SET_VALUES = 3,
+			GET_DOMAIN = 4,
 		}
 
 		enum CmdArrayRef {
@@ -1068,6 +1071,19 @@ namespace Mono.Debugger.Soft
 			reply_cbs = new Dictionary<int, ReplyCallback> ();
 			reply_cb_counts = new Dictionary<int, int> ();
 			reply_packets_monitor = new Object ();
+			if (EnableConnectionLogging) {
+				var path = Environment.GetEnvironmentVariable ("MONO_SDB_LOG");
+				if (path.Contains ("{0}")) {
+					//C:\SomeDir\sdbLog{0}.txt -> C:\SomeDir\sdbLog1.txt
+					LoggingStream = new StreamWriter (string.Format (path, ConnectionId++), false);
+				} else if (Path.HasExtension (path)) {
+					//C:\SomeDir\sdbLog.txt -> C:\SomeDir\sdbLog1.txt
+					LoggingStream = new StreamWriter (Path.GetDirectoryName (path) + Path.DirectorySeparatorChar + Path.GetFileNameWithoutExtension (path) + ConnectionId++ + "." + Path.GetExtension (path), false);
+				} else {
+					//C:\SomeDir\sdbLog -> C:\SomeDir\sdbLog1
+					LoggingStream = new StreamWriter (path + ConnectionId++, false);
+				}
+			}
 		}
 		
 		protected abstract int TransportReceive (byte[] buf, int buf_offset, int len);
@@ -1200,6 +1216,8 @@ namespace Mono.Debugger.Soft
 
 		bool disconnected;
 
+		internal ManualResetEvent DisconnectedEvent = new ManualResetEvent (false);
+
 		void receiver_thread_main () {
 			while (!closed) {
 				try {
@@ -1216,6 +1234,7 @@ namespace Mono.Debugger.Soft
 
 			lock (reply_packets_monitor) {
 				disconnected = true;
+				DisconnectedEvent.Set ();
 				Monitor.PulseAll (reply_packets_monitor);
 				TransportClose ();
 			}
@@ -1443,7 +1462,7 @@ namespace Mono.Debugger.Soft
 
 			WritePackets (buffered_packets);
 			if (EnableConnectionLogging) {
-				LoggingStream.WriteLine (String.Format ("Sent {1} packets.", buffered_packets.Count));
+				LoggingStream.WriteLine (String.Format ("Sent {0} packets.", buffered_packets.Count));
 				LoggingStream.Flush ();
 			}
 			buffered_packets.Clear ();
@@ -1619,13 +1638,14 @@ namespace Mono.Debugger.Soft
 			SendReceive (CommandSet.VM, (int)CmdVM.SET_PROTOCOL_VERSION, new PacketWriter ().WriteInt (major).WriteInt (minor));
 		}
 
-		internal long[] VM_GetThreads () {
-			var res = SendReceive (CommandSet.VM, (int)CmdVM.ALL_THREADS, null);
-			int len = res.ReadInt ();
-			long[] arr = new long [len];
-			for (int i = 0; i < len; ++i)
-				arr [i] = res.ReadId ();
-			return arr;
+		internal void VM_GetThreads (Action<long[]> resultCallaback) {
+			Send (CommandSet.VM, (int)CmdVM.ALL_THREADS, null, (res) => {
+				int len = res.ReadInt ();
+				long[] arr = new long [len];
+				for (int i = 0; i < len; ++i)
+					arr [i] = res.ReadId ();
+				resultCallaback(arr);
+			}, 1);
 		}
 
 		internal void VM_Suspend () {
@@ -1655,24 +1675,39 @@ namespace Mono.Debugger.Soft
 			}
 		}
 
-		internal delegate void InvokeMethodCallback (ValueImpl v, ValueImpl exc, ErrorCode error, object state);
+		internal delegate void InvokeMethodCallback (ValueImpl v, ValueImpl exc, ValueImpl out_this, ValueImpl[] out_args, ErrorCode error, object state);
+
+		void read_invoke_res (PacketReader r, out ValueImpl v, out ValueImpl exc, out ValueImpl out_this, out ValueImpl[] out_args) {
+			int resflags = r.ReadByte ();
+			v = null;
+			exc = null;
+			out_this = null;
+			out_args = null;
+			if (resflags == 0) {
+				exc = r.ReadValue ();
+			} else {
+				v = r.ReadValue ();
+				if ((resflags & 2) != 0)
+					out_this = r.ReadValue ();
+				if ((resflags & 4) != 0) {
+					int nargs = r.ReadInt ();
+					out_args = new ValueImpl [nargs];
+					for (int i = 0; i < nargs; ++i)
+						out_args [i] = r.ReadValue ();
+				}
+			}
+		}
 
 		internal int VM_BeginInvokeMethod (long thread, long method, ValueImpl this_arg, ValueImpl[] arguments, InvokeFlags flags, InvokeMethodCallback callback, object state) {
 			return Send (CommandSet.VM, (int)CmdVM.INVOKE_METHOD, new PacketWriter ().WriteId (thread).WriteInt ((int)flags).WriteId (method).WriteValue (this_arg).WriteInt (arguments.Length).WriteValues (arguments), delegate (PacketReader r) {
-					ValueImpl v, exc;
+					ValueImpl v, exc, out_this = null;
+					ValueImpl[] out_args = null;
 
 					if (r.ErrorCode != 0) {
-						callback (null, null, (ErrorCode)r.ErrorCode, state);
+						callback (null, null, null, null, (ErrorCode)r.ErrorCode, state);
 					} else {
-						if (r.ReadByte () == 0) {
-							exc = r.ReadValue ();
-							v = null;
-						} else {
-							v = r.ReadValue ();
-							exc = null;
-						}
-
-						callback (v, exc, 0, state);
+						read_invoke_res (r, out v, out exc, out out_this, out out_args);
+						callback (v, exc, out_this, out_args, 0, state);
 					}
 				}, 1);
 		}
@@ -1690,20 +1725,14 @@ namespace Mono.Debugger.Soft
 				w.WriteValues (arguments [i]);
 			}
 			return Send (CommandSet.VM, (int)CmdVM.INVOKE_METHODS, w, delegate (PacketReader r) {
-					ValueImpl v, exc;
+					ValueImpl v, exc, out_this = null;
+					ValueImpl[] out_args = null;
 
 					if (r.ErrorCode != 0) {
-						callback (null, null, (ErrorCode)r.ErrorCode, state);
+						callback (null, null, null, null, (ErrorCode)r.ErrorCode, state);
 					} else {
-						if (r.ReadByte () == 0) {
-							exc = r.ReadValue ();
-							v = null;
-						} else {
-							v = r.ReadValue ();
-							exc = null;
-						}
-
-						callback (v, exc, 0, state);
+						read_invoke_res (r, out v, out exc, out out_this, out out_args);
+						callback (v, exc, out_this, out_args, 0, state);
 					}
 				}, methods.Length);
 		}
@@ -2354,6 +2383,10 @@ namespace Mono.Debugger.Soft
 			SendReceive (CommandSet.STACK_FRAME, (int)CmdStackFrame.SET_VALUES, new PacketWriter ().WriteId (thread_id).WriteId (id).WriteInt (len).WriteInts (pos).WriteValues (values));
 		}
 
+		internal long StackFrame_GetDomain (long thread_id, long id) {
+			return SendReceive (CommandSet.STACK_FRAME, (int)CmdStackFrame.GET_DOMAIN, new PacketWriter ().WriteId (thread_id).WriteId (id)).ReadId ();
+		}
+
 		/*
 		 * ARRAYS
 		 */
@@ -2446,6 +2479,7 @@ namespace Mono.Debugger.Soft
 		{
 			closed = true;
 			disconnected = true;
+			DisconnectedEvent.Set ();
 			TransportClose ();
 		}
 	}

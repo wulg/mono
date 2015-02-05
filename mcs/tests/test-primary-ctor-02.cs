@@ -1,3 +1,4 @@
+// Compiler options: -langversion:experimental
 using System;
 
 partial class Part
@@ -5,22 +6,21 @@ partial class Part
 	public Part (string s)
 		: this (5)
 	{
-		if (arg != 5)
-			throw new ApplicationException ("1");
-
-		if (Property != 12)
-			throw new ApplicationException ("2");
 	}
 }
 
 partial class Part(int arg)
 {
-	int field = 7;
+	static int field = 7;
 
-	int Property {
-		get {
-			return arg + field;
-		}
+	int Property { get; } = arg + field;
+
+	{
+		if (arg != 5)
+			throw new ApplicationException ("1");
+
+		if (Property != 12)
+			throw new ApplicationException ("2");
 	}
 
 	public static int Main ()

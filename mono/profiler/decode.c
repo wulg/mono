@@ -20,6 +20,7 @@
 #if defined (HAVE_SYS_ZLIB)
 #include <zlib.h>
 #endif
+#include <glib.h>
 #include <mono/metadata/profiler.h>
 #include <mono/metadata/object.h>
 #include <mono/metadata/debug-helpers.h>
@@ -100,7 +101,7 @@ struct _CounterValue {
 typedef struct _Counter Counter;
 struct _Counter {
 	int index;
-	int section;
+	const char *section;
 	const char *name;
 	int type;
 	int unit;
@@ -117,7 +118,7 @@ struct _CounterList {
 
 typedef struct _CounterSection CounterSection;
 struct _CounterSection {
-	int value;
+	const char *value;
 	CounterList *counters;
 	CounterList *counters_last;
 	CounterSection *next;
@@ -152,7 +153,7 @@ add_counter_to_section (Counter *counter)
 	clist->counter = counter;
 
 	for (csection = counters_sections; csection; csection = csection->next) {
-		if (csection->value == counter->section) {
+		if (strcmp (csection->value, counter->section) == 0) {
 			/* If section exist */
 			if (!csection->counters)
 				csection->counters = clist;
@@ -180,7 +181,7 @@ add_counter_to_section (Counter *counter)
 }
 
 static void
-add_counter (int section, const char *name, int type, int unit, int variance, int index)
+add_counter (const char *section, const char *name, int type, int unit, int variance, int index)
 {
 	CounterList *list, *l;
 	Counter *counter;
@@ -226,7 +227,7 @@ add_counter_to_timestamp (uint64_t timestamp, Counter *counter)
 	for (ctimestamp = counters_timestamps; ctimestamp; ctimestamp = ctimestamp->next) {
 		if (ctimestamp->value == timestamp) {
 			for (csection = ctimestamp->sections; csection; csection = csection->next) {
-				if (csection->value == counter->section) {
+				if (strcmp (csection->value, counter->section) == 0) {
 					/* if timestamp exist and section exist */
 					if (!csection->counters)
 						csection->counters = clist;
@@ -445,7 +446,7 @@ dump_counters (void)
 				for (i = 0; counters_to_print [i][0] != 0; i++) {
 					if (strcmp (counters_to_print [i], counter->name) == 0) {
 						if (!section_printed) {
-							fprintf (outfile, "\t%s:\n", section_name (csection->value));
+							fprintf (outfile, "\t%s:\n", csection->value);
 							section_printed = 1;
 						}
 
@@ -457,12 +458,15 @@ dump_counters (void)
 		}
 	} else if (counters_sort_mode == COUNTERS_SORT_TIME) {
 		for (ctimestamp = counters_timestamps; ctimestamp; ctimestamp = ctimestamp->next) {
-			fprintf (outfile, "\t%lld:%02lld:%02lld:%02lld.%03lld:\n", ctimestamp->value / 1000 / 60 / 60 / 24 % 1000,
-				ctimestamp->value / 1000 / 60 / 60 % 24, ctimestamp->value / 1000 / 60 % 60,
-				ctimestamp->value / 1000 % 60, ctimestamp->value % 1000);
+			fprintf (outfile, "\t%llu:%02llu:%02llu:%02llu.%03llu:\n",
+				(unsigned long long) (ctimestamp->value / 1000 / 60 / 60 / 24 % 1000),
+				(unsigned long long) (ctimestamp->value / 1000 / 60 / 60 % 24),
+				(unsigned long long) (ctimestamp->value / 1000 / 60 % 60),
+				(unsigned long long) (ctimestamp->value / 1000 % 60),
+				(unsigned long long) (ctimestamp->value % 1000));
 
 			for (csection = ctimestamp->sections; csection; csection = csection->next) {
-				fprintf (outfile, "\t\t%s:\n", section_name (csection->value));
+				fprintf (outfile, "\t\t%s:\n", csection->value);
 
 				for (clist = csection->counters; clist; clist = clist->next) {
 					counter = clist->counter;
@@ -477,7 +481,7 @@ dump_counters (void)
 		}
 	} else if (counters_sort_mode == COUNTERS_SORT_CATEGORY) {
 		for (csection = counters_sections; csection; csection = csection->next) {
-			fprintf (outfile, "\t%s:\n", section_name (csection->value));
+			fprintf (outfile, "\t%s:\n", csection->value);
 
 			for (clist = csection->counters; clist; clist = clist->next) {
 				counter = clist->counter;
@@ -485,9 +489,12 @@ dump_counters (void)
 					counter->name, type_name (counter->type), unit_name (counter->unit), variance_name (counter->variance));
 
 				for (cvalue = counter->values; cvalue; cvalue = cvalue->next) {
-					snprintf (strtimestamp, sizeof (strtimestamp), "%lld:%02lld:%02lld:%02lld.%03lld", cvalue->timestamp / 1000 / 60 / 60 / 24 % 1000,
-						cvalue->timestamp / 1000 / 60 / 60 % 24, cvalue->timestamp / 1000 / 60 % 60,
-						cvalue->timestamp / 1000 % 60, cvalue->timestamp % 1000);
+					snprintf (strtimestamp, sizeof (strtimestamp), "%llu:%02llu:%02llu:%02llu.%03llu",
+						(unsigned long long) (cvalue->timestamp / 1000 / 60 / 60 / 24 % 1000),
+						(unsigned long long) (cvalue->timestamp / 1000 / 60 / 60 % 24),
+						(unsigned long long) (cvalue->timestamp / 1000 / 60 % 60),
+						(unsigned long long) (cvalue->timestamp / 1000 % 60),
+						(unsigned long long) (cvalue->timestamp % 1000));
 
 					dump_counters_value (counter, "\t\t\t%s", strtimestamp, cvalue->buffer);
 				}
@@ -852,9 +859,9 @@ static void
 print_usym (UnmanagedSymbol* um)
 {
 	if (um->parent)
-		fprintf (outfile, "\t%6d %6.2f %-36s in %s\n", um->sample_hits, um->sample_hits*100.0/num_stat_samples, um->name, um->parent->name);
+		fprintf (outfile, "\t%6zd %6.2f %-36s in %s\n", um->sample_hits, um->sample_hits*100.0/num_stat_samples, um->name, um->parent->name);
 	else
-		fprintf (outfile, "\t%6d %6.2f %s\n", um->sample_hits, um->sample_hits*100.0/num_stat_samples, um->name);
+		fprintf (outfile, "\t%6zd %6.2f %s\n", um->sample_hits, um->sample_hits*100.0/num_stat_samples, um->name);
 }
 
 static int
@@ -1333,7 +1340,7 @@ heap_shot_mark_objects (HeapShot *hs)
 			fprintf (outfile, "object %p (%s) unmarked\n", (void*)hs->objects_hash [i], hs->objects_hash [i]->hklass->klass->name);
 		}
 	}
-	fprintf (outfile, "Total unmarked: %d/%d\n", num_unmarked, hs->objects_count);
+	fprintf (outfile, "Total unmarked: %zd/%zd\n", num_unmarked, hs->objects_count);
 	free (marks);
 }
 
@@ -1426,7 +1433,7 @@ typedef struct _ThreadContext ThreadContext;
 typedef struct {
 	FILE *file;
 #if defined (HAVE_SYS_ZLIB)
-	gzFile *gzfile;
+	gzFile gzfile;
 #endif
 	unsigned char *buf;
 	int size;
@@ -1840,7 +1847,7 @@ tracked_creation (uintptr_t obj, ClassDesc *cd, uint64_t size, BackTrace *bt, ui
 	for (i = 0; i < num_tracked_objects; ++i) {
 		if (tracked_objects [i] != obj)
 			continue;
-		fprintf (outfile, "Object %p created (%s, %llu bytes) at %.3f secs.\n", (void*)obj, cd->name, size, (timestamp - startup_time)/1000000000.0);
+		fprintf (outfile, "Object %p created (%s, %llu bytes) at %.3f secs.\n", (void*)obj, cd->name, (unsigned long long) size, (timestamp - startup_time)/1000000000.0);
 		if (bt && bt->count) {
 			int k;
 			for (k = 0; k < bt->count; ++k)
@@ -1889,6 +1896,36 @@ found_object (uintptr_t obj)
 	tracked_objects [num_tracked_objects - 1] = obj;
 }
 
+static int num_jit_helpers = 0;
+static int jit_helpers_code_size = 0;
+
+static const char*
+code_buffer_desc (int type)
+{
+	switch (type) {
+	case MONO_PROFILER_CODE_BUFFER_METHOD:
+		return "method";
+	case MONO_PROFILER_CODE_BUFFER_METHOD_TRAMPOLINE:
+		return "method trampoline";
+	case MONO_PROFILER_CODE_BUFFER_UNBOX_TRAMPOLINE:
+		return "unbox trampoline";
+	case MONO_PROFILER_CODE_BUFFER_IMT_TRAMPOLINE:
+		return "imt trampoline";
+	case MONO_PROFILER_CODE_BUFFER_GENERICS_TRAMPOLINE:
+		return "generics trampoline";
+	case MONO_PROFILER_CODE_BUFFER_SPECIFIC_TRAMPOLINE:
+		return "specific trampoline";
+	case MONO_PROFILER_CODE_BUFFER_HELPER:
+		return "misc helper";
+	case MONO_PROFILER_CODE_BUFFER_MONITOR:
+		return "monitor/lock";
+	case MONO_PROFILER_CODE_BUFFER_DELEGATE_INVOKE:
+		return "delegate invoke";
+	default:
+		return "unspecified";
+	}
+}
+
 #define OBJ_ADDR(diff) ((obj_base + diff) << 3)
 #define LOG_TIME(base,diff) /*fprintf("outfile, time %llu + %llu near offset %d\n", base, diff, p - ctx->buf)*/
 
@@ -1929,7 +1966,7 @@ decode_buffer (ProfContext *ctx)
 	thread_id = read_int64 (p + 32);
 	method_base = read_int64 (p + 40);
 	if (debug)
-		fprintf (outfile, "buf: thread:%x, len: %d, time: %llu, file offset: %llu\n", thread_id, len, time_base, file_offset);
+		fprintf (outfile, "buf: thread:%zx, len: %d, time: %llu, file offset: %llu\n", thread_id, len, (unsigned long long) time_base, (unsigned long long) file_offset);
 	thread = load_thread (ctx, thread_id);
 	if (!load_data (ctx, len))
 		return 0;
@@ -1956,7 +1993,7 @@ decode_buffer (ProfContext *ctx)
 			if (subtype == TYPE_GC_RESIZE) {
 				uint64_t new_size = decode_uleb128 (p, &p);
 				if (debug)
-					fprintf (outfile, "gc heap resized to %llu\n", new_size);
+					fprintf (outfile, "gc heap resized to %llu\n", (unsigned long long) new_size);
 				gc_resizes++;
 				if (new_size > max_heap_size)
 					max_heap_size = new_size;
@@ -1964,7 +2001,7 @@ decode_buffer (ProfContext *ctx)
 				uint64_t ev = decode_uleb128 (p, &p);
 				int gen = decode_uleb128 (p, &p);
 				if (debug)
-					fprintf (outfile, "gc event for gen%d: %s at %llu (thread: 0x%x)\n", gen, gc_event_name (ev), time_base, thread->thread_id);
+					fprintf (outfile, "gc event for gen%d: %s at %llu (thread: 0x%zx)\n", gen, gc_event_name (ev), (unsigned long long) time_base, thread->thread_id);
 				if (gen > 2) {
 					fprintf (outfile, "incorrect gc gen: %d\n", gen);
 					break;
@@ -2033,7 +2070,7 @@ decode_buffer (ProfContext *ctx)
 					return 0;
 				}
 				if (debug)
-					fprintf (outfile, "loaded class %p (%s in %p) at %llu\n", (void*)(ptr_base + ptrdiff), p, (void*)(ptr_base + imptrdiff), time_base);
+					fprintf (outfile, "loaded class %p (%s in %p) at %llu\n", (void*)(ptr_base + ptrdiff), p, (void*)(ptr_base + imptrdiff), (unsigned long long) time_base);
 				if (!error)
 					add_class (ptr_base + ptrdiff, (char*)p);
 				while (*p) p++;
@@ -2045,7 +2082,7 @@ decode_buffer (ProfContext *ctx)
 					return 0;
 				}
 				if (debug)
-					fprintf (outfile, "loaded image %p (%s) at %llu\n", (void*)(ptr_base + ptrdiff), p, time_base);
+					fprintf (outfile, "loaded image %p (%s) at %llu\n", (void*)(ptr_base + ptrdiff), p, (unsigned long long) time_base);
 				if (!error)
 					add_image (ptr_base + ptrdiff, (char*)p);
 				while (*p) p++;
@@ -2080,7 +2117,7 @@ decode_buffer (ProfContext *ctx)
 			LOG_TIME (time_base, tdiff);
 			time_base += tdiff;
 			if (debug)
-				fprintf (outfile, "alloced object %p, size %llu (%s) at %llu\n", (void*)OBJ_ADDR (objdiff), len, lookup_class (ptr_base + ptrdiff)->name, time_base);
+				fprintf (outfile, "alloced object %p, size %llu (%s) at %llu\n", (void*)OBJ_ADDR (objdiff), (unsigned long long) len, lookup_class (ptr_base + ptrdiff)->name, (unsigned long long) time_base);
 			if (has_bt) {
 				num_bt = 8;
 				frames = decode_bt (sframes, &num_bt, p, &p, ptr_base);
@@ -2149,13 +2186,13 @@ decode_buffer (ProfContext *ctx)
 		case TYPE_HEAP: {
 			int subtype = *p & 0xf0;
 			if (subtype == TYPE_HEAP_OBJECT) {
-				HeapObjectDesc *ho;
+				HeapObjectDesc *ho = NULL;
 				int i;
 				intptr_t objdiff = decode_sleb128 (p + 1, &p);
 				intptr_t ptrdiff = decode_sleb128 (p, &p);
 				uint64_t size = decode_uleb128 (p, &p);
 				uintptr_t num = decode_uleb128 (p, &p);
-				uintptr_t ref_offset;
+				uintptr_t ref_offset = 0;
 				uintptr_t last_obj_offset = 0;
 				ClassDesc *cd = lookup_class (ptr_base + ptrdiff);
 				if (size) {
@@ -2182,10 +2219,10 @@ decode_buffer (ProfContext *ctx)
 						track_obj_reference (OBJ_ADDR (obj1diff), OBJ_ADDR (objdiff), cd);
 				}
 				if (debug && size)
-					fprintf (outfile, "traced object %p, size %llu (%s), refs: %d\n", (void*)OBJ_ADDR (objdiff), size, cd->name, num);
+					fprintf (outfile, "traced object %p, size %llu (%s), refs: %zd\n", (void*)OBJ_ADDR (objdiff), (unsigned long long) size, cd->name, num);
 			} else if (subtype == TYPE_HEAP_ROOT) {
 				uintptr_t num = decode_uleb128 (p + 1, &p);
-				uintptr_t gc_num = decode_uleb128 (p, &p);
+				uintptr_t gc_num G_GNUC_UNUSED = decode_uleb128 (p, &p);
 				int i;
 				for (i = 0; i < num; ++i) {
 					intptr_t objdiff = decode_sleb128 (p, &p);
@@ -2347,6 +2384,30 @@ decode_buffer (ProfContext *ctx)
 			}
 			break;
 		}
+		case TYPE_RUNTIME: {
+			int subtype = *p & 0xf0;
+			uint64_t tdiff = decode_uleb128 (p + 1, &p);
+			LOG_TIME (time_base, tdiff);
+			time_base += tdiff;
+			if (subtype == TYPE_JITHELPER) {
+				int type = decode_uleb128 (p, &p);
+				intptr_t codediff = decode_sleb128 (p, &p);
+				int codelen = decode_uleb128 (p, &p);
+				const char *name;
+				if (type == MONO_PROFILER_CODE_BUFFER_SPECIFIC_TRAMPOLINE) {
+					name = (void*)p;
+					while (*p) p++;
+						p++;
+				} else {
+					name = code_buffer_desc (type);
+				}
+				num_jit_helpers++;
+				jit_helpers_code_size += codelen;
+				if (debug)
+					fprintf (outfile, "jit helper %s, size: %d, code: %p\n", name, codelen, (void*)(ptr_base + codediff));
+			}
+			break;
+		}
 		case TYPE_SAMPLE: {
 			int subtype = *p & 0xf0;
 			if (subtype == TYPE_SAMPLE_HIT) {
@@ -2389,7 +2450,7 @@ decode_buffer (ProfContext *ctx)
 				/* un unmanaged binary loaded in memory */
 				uint64_t tdiff = decode_uleb128 (p + 1, &p);
 				uintptr_t addr = decode_sleb128 (p, &p);
-				uint64_t offset = decode_uleb128 (p, &p);
+				uint64_t offset G_GNUC_UNUSED = decode_uleb128 (p, &p);
 				uintptr_t size = decode_uleb128 (p, &p);
 				char *name;
 				LOG_TIME (time_base, tdiff);
@@ -2405,13 +2466,20 @@ decode_buffer (ProfContext *ctx)
 				for (i = 0; i < len; i++) {
 					uint64_t type, unit, variance, index;
 					uint64_t section = decode_uleb128 (p, &p);
-					char *name = pstrdup ((char*)p);
+					char *section_str, *name;
+					if (section != MONO_COUNTER_PERFCOUNTERS) {
+						section_str = (char*) section_name (section);
+					} else {
+						section_str = pstrdup ((char*)p);
+						while (*p++);
+					}
+					name = pstrdup ((char*)p);
 					while (*p++);
 					type = decode_uleb128 (p, &p);
 					unit = decode_uleb128 (p, &p);
 					variance = decode_uleb128 (p, &p);
 					index = decode_uleb128 (p, &p);
-					add_counter ((int)section, name, (int)type, (int)unit, (int)variance, (int)index);
+					add_counter (section_str, name, (int)type, (int)unit, (int)variance, (int)index);
 				}
 			} else if (subtype == TYPE_SAMPLE_COUNTERS) {
 				int i;
@@ -2487,7 +2555,7 @@ decode_buffer (ProfContext *ctx)
 			break;
 		}
 		default:
-			fprintf (outfile, "unhandled profiler event: 0x%x at file offset: %llu + %d (len: %d\n)\n", *p, file_offset, p - ctx->buf, len);
+			fprintf (outfile, "unhandled profiler event: 0x%x at file offset: %llu + %lld (len: %d\n)\n", *p, (unsigned long long) file_offset, (long long) (p - ctx->buf), len);
 			exit (1);
 		}
 	}
@@ -2591,7 +2659,7 @@ dump_traces (TraceDesc *traces, const char *desc)
 		bt = traces->traces [j].bt;
 		if (!bt->count)
 			continue;
-		fprintf (outfile, "\t%llu %s from:\n", traces->traces [j].count, desc);
+		fprintf (outfile, "\t%llu %s from:\n", (unsigned long long) traces->traces [j].count, desc);
 		for (k = 0; k < bt->count; ++k)
 			fprintf (outfile, "\t\t%s\n", bt->methods [k]->name);
 	}
@@ -2612,12 +2680,12 @@ dump_exceptions (void)
 {
 	int i;
 	fprintf (outfile, "\nException summary\n");
-	fprintf (outfile, "\tThrows: %llu\n", throw_count);
+	fprintf (outfile, "\tThrows: %llu\n", (unsigned long long) throw_count);
 	dump_traces (&exc_traces, "throws");
 	for (i = 0; i <= MONO_EXCEPTION_CLAUSE_FAULT; ++i) {
 		if (!clause_summary [i])
 			continue;
-		fprintf (outfile, "\tExecuted %s clauses: %llu\n", clause_name (i), clause_summary [i]);
+		fprintf (outfile, "\tExecuted %s clauses: %llu\n", clause_name (i), (unsigned long long) clause_summary [i]);
 	}
 }
 
@@ -2657,9 +2725,9 @@ dump_monitors (void)
 			mdesc->wait_time/1000000000.0, mdesc->max_wait_time/1000000000.0, mdesc->wait_time/1000000000.0/mdesc->contentions);
 		dump_traces (&mdesc->traces, "contentions");
 	}
-	fprintf (outfile, "\tLock contentions: %llu\n", monitor_contention);
-	fprintf (outfile, "\tLock acquired: %llu\n", monitor_acquired);
-	fprintf (outfile, "\tLock failures: %llu\n", monitor_failed);
+	fprintf (outfile, "\tLock contentions: %llu\n", (unsigned long long) monitor_contention);
+	fprintf (outfile, "\tLock acquired: %llu\n", (unsigned long long) monitor_acquired);
+	fprintf (outfile, "\tLock failures: %llu\n", (unsigned long long) monitor_failed);
 }
 
 static void
@@ -2668,20 +2736,25 @@ dump_gcs (void)
 	int i;
 	fprintf (outfile, "\nGC summary\n");
 	fprintf (outfile, "\tGC resizes: %d\n", gc_resizes);
-	fprintf (outfile, "\tMax heap size: %llu\n", max_heap_size);
-	fprintf (outfile, "\tObject moves: %llu\n", gc_object_moves);
+	fprintf (outfile, "\tMax heap size: %llu\n", (unsigned long long) max_heap_size);
+	fprintf (outfile, "\tObject moves: %llu\n", (unsigned long long) gc_object_moves);
 	for (i = 0; i < 3; ++i) {
 		if (!gc_info [i].count)
 			continue;
 		fprintf (outfile, "\tGen%d collections: %d, max time: %lluus, total time: %lluus, average: %lluus\n",
-			i, gc_info [i].count, gc_info [i].max_time / 1000, gc_info [i].total_time / 1000,
-			gc_info [i].total_time / gc_info [i].count / 1000);
+			i, gc_info [i].count,
+			(unsigned long long) (gc_info [i].max_time / 1000),
+			(unsigned long long) (gc_info [i].total_time / 1000),
+			(unsigned long long) (gc_info [i].total_time / gc_info [i].count / 1000));
 	}
 	for (i = 0; i < 3; ++i) {
 		if (!handle_info [i].max_live)
 			continue;
 		fprintf (outfile, "\tGC handles %s: created: %llu, destroyed: %llu, max: %llu\n",
-			get_handle_name (i), handle_info [i].created, handle_info [i].destroyed, handle_info [i].max_live);
+			get_handle_name (i),
+			(unsigned long long) (handle_info [i].created),
+			(unsigned long long) (handle_info [i].destroyed),
+			(unsigned long long) (handle_info [i].max_live));
 		dump_traces (&handle_info [i].traces, "created");
 	}
 }
@@ -2705,6 +2778,8 @@ dump_jit (void)
 	}
 	fprintf (outfile, "\tCompiled methods: %d\n", compiled_methods);
 	fprintf (outfile, "\tGenerated code size: %d\n", code_size);
+	fprintf (outfile, "\tJIT helpers: %d\n", num_jit_helpers);
+	fprintf (outfile, "\tJIT helpers code size: %d\n", jit_helpers_code_size);
 }
 
 static void
@@ -2735,11 +2810,15 @@ dump_allocations (void)
 			fprintf (outfile, "\nAllocation summary\n");
 			fprintf (outfile, "%10s %10s %8s Type name\n", "Bytes", "Count", "Average");
 		}
-		fprintf (outfile, "%10llu %10d %8llu %s\n", cd->alloc_size, cd->allocs, cd->alloc_size / cd->allocs, cd->name);
+		fprintf (outfile, "%10llu %10zd %8llu %s\n",
+			(unsigned long long) (cd->alloc_size),
+			cd->allocs,
+			(unsigned long long) (cd->alloc_size / cd->allocs),
+			cd->name);
 		dump_traces (&cd->traces, "bytes");
 	}
 	if (allocs)
-		fprintf (outfile, "Total memory allocated: %llu bytes in %d objects\n", size, allocs);
+		fprintf (outfile, "Total memory allocated: %llu bytes in %zd objects\n", (unsigned long long) size, allocs);
 }
 
 enum {
@@ -2825,11 +2904,15 @@ dump_methods (void)
 			fprintf (outfile, "\nMethod call summary\n");
 			fprintf (outfile, "%8s %8s %10s Method name\n", "Total(ms)", "Self(ms)", "Calls");
 		}
-		fprintf (outfile, "%8llu %8llu %10llu %s\n", msecs, smsecs, cd->calls, cd->name);
+		fprintf (outfile, "%8llu %8llu %10llu %s\n",
+			(unsigned long long) (msecs),
+			(unsigned long long) (smsecs),
+			(unsigned long long) (cd->calls),
+			cd->name);
 		dump_traces (&cd->traces, "calls");
 	}
 	if (calls)
-		fprintf (outfile, "Total calls: %llu\n", calls);
+		fprintf (outfile, "Total calls: %llu\n", (unsigned long long) calls);
 }
 
 static int
@@ -2874,7 +2957,9 @@ dump_rev_claases (HeapClassRevRef *revs, int count)
 		return;
 	for (j = 0; j < count; ++j) {
 		HeapClassDesc *cd = revs [j].klass;
-		fprintf (outfile, "\t\t%llu references from: %s\n", revs [j].count, cd->klass->name);
+		fprintf (outfile, "\t\t%llu references from: %s\n",
+			(unsigned long long) (revs [j].count),
+			cd->klass->name);
 	}
 }
 
@@ -2898,8 +2983,12 @@ heap_shot_summary (HeapShot *hs, int hs_num, HeapShot *last_hs)
 	}
 	hs->sorted = sorted;
 	qsort (sorted, ccount, sizeof (void*), compare_heap_class);
-	fprintf (outfile, "\n\tHeap shot %d at %.3f secs: size: %llu, object count: %llu, class count: %d, roots: %d\n",
-		hs_num, (hs->timestamp - startup_time)/1000000000.0, size, count, ccount, hs->num_roots);
+	fprintf (outfile, "\n\tHeap shot %d at %.3f secs: size: %llu, object count: %llu, class count: %d, roots: %zd\n",
+		hs_num,
+		(hs->timestamp - startup_time)/1000000000.0,
+		(unsigned long long) (size),
+		(unsigned long long) (count),
+		ccount, hs->num_roots);
 	if (!verbose && ccount > 30)
 		ccount = 30;
 	fprintf (outfile, "\t%10s %10s %8s Class name\n", "Bytes", "Count", "Average");
@@ -2910,11 +2999,15 @@ heap_shot_summary (HeapShot *hs, int hs_num, HeapShot *last_hs)
 		cd = sorted [i];
 		if (last_hs)
 			ocd = heap_class_lookup (last_hs, cd->klass);
-		fprintf (outfile, "\t%10llu %10llu %8llu %s", cd->total_size, cd->count, cd->total_size / cd->count, cd->klass->name);
+		fprintf (outfile, "\t%10llu %10llu %8llu %s",
+			(unsigned long long) (cd->total_size),
+			(unsigned long long) (cd->count),
+			(unsigned long long) (cd->total_size / cd->count),
+			cd->klass->name);
 		if (ocd) {
 			int64_t bdiff = cd->total_size - ocd->total_size;
 			int64_t cdiff = cd->count - ocd->count;
-			fprintf (outfile, " (bytes: %+lld, count: %+lld)\n", bdiff, cdiff);
+			fprintf (outfile, " (bytes: %+lld, count: %+lld)\n", (long long) bdiff, (long long) cdiff);
 		} else {
 			fprintf (outfile, "\n");
 		}
@@ -2929,7 +3022,7 @@ heap_shot_summary (HeapShot *hs, int hs_num, HeapShot *last_hs)
 		assert (cd->rev_count == k);
 		qsort (rev_sorted, cd->rev_count, sizeof (HeapClassRevRef), compare_rev_class);
 		if (cd->root_references)
-			fprintf (outfile, "\t\t%d root references (%d pinning)\n", cd->root_references, cd->pinned_references);
+			fprintf (outfile, "\t\t%zd root references (%zd pinning)\n", cd->root_references, cd->pinned_references);
 		dump_rev_claases (rev_sorted, cd->rev_count);
 		free (rev_sorted);
 	}

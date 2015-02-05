@@ -21,12 +21,6 @@
 //
 
 #include "config.h"
-//undef those as llvm defines them on its own config.h as well.
-#undef PACKAGE_BUGREPORT
-#undef PACKAGE_NAME
-#undef PACKAGE_STRING
-#undef PACKAGE_TARNAME
-#undef PACKAGE_VERSION
 
 #include <stdint.h>
 
@@ -65,10 +59,6 @@
 #include "llvm-c/ExecutionEngine.h"
 
 #include "mini-llvm-cpp.h"
-
-#define LLVM_CHECK_VERSION(major,minor) \
-	((LLVM_MAJOR_VERSION > (major)) ||									\
-	 ((LLVM_MAJOR_VERSION == (major)) && (LLVM_MINOR_VERSION >= (minor))))
 
 // extern "C" void LLVMInitializeARMTargetInfo();
 // extern "C" void LLVMInitializeARMTarget ();
@@ -328,9 +318,25 @@ mono_llvm_build_alloca (LLVMBuilderRef builder, LLVMTypeRef Ty,
 
 LLVMValueRef 
 mono_llvm_build_load (LLVMBuilderRef builder, LLVMValueRef PointerVal,
-					  const char *Name, gboolean is_volatile)
+					  const char *Name, gboolean is_volatile, BarrierKind barrier)
 {
-	return wrap(unwrap(builder)->CreateLoad(unwrap(PointerVal), is_volatile, Name));
+	LoadInst *ins = unwrap(builder)->CreateLoad(unwrap(PointerVal), is_volatile, Name);
+
+	switch (barrier) {
+	case LLVM_BARRIER_NONE:
+		break;
+	case LLVM_BARRIER_ACQ:
+		ins->setOrdering(Acquire);
+		break;
+	case LLVM_BARRIER_SEQ:
+		ins->setOrdering(SequentiallyConsistent);
+		break;
+	default:
+		g_assert_not_reached ();
+		break;
+	}
+
+	return wrap(ins);
 }
 
 LLVMValueRef 
@@ -347,9 +353,25 @@ mono_llvm_build_aligned_load (LLVMBuilderRef builder, LLVMValueRef PointerVal,
 
 LLVMValueRef 
 mono_llvm_build_store (LLVMBuilderRef builder, LLVMValueRef Val, LLVMValueRef PointerVal,
-					  gboolean is_volatile)
+					  gboolean is_volatile, BarrierKind barrier)
 {
-	return wrap(unwrap(builder)->CreateStore(unwrap(Val), unwrap(PointerVal), is_volatile));
+	StoreInst *ins = unwrap(builder)->CreateStore(unwrap(Val), unwrap(PointerVal), is_volatile);
+
+	switch (barrier) {
+	case LLVM_BARRIER_NONE:
+		break;
+	case LLVM_BARRIER_REL:
+		ins->setOrdering(Release);
+		break;
+	case LLVM_BARRIER_SEQ:
+		ins->setOrdering(SequentiallyConsistent);
+		break;
+	default:
+		g_assert_not_reached ();
+		break;
+	}
+
+	return wrap(ins);
 }
 
 LLVMValueRef 
@@ -395,16 +417,34 @@ mono_llvm_build_atomic_rmw (LLVMBuilderRef builder, AtomicRMWOp op, LLVMValueRef
 		break;
 	}
 
-	ins = unwrap (builder)->CreateAtomicRMW (aop, unwrap (ptr), unwrap (val), AcquireRelease);
+	ins = unwrap (builder)->CreateAtomicRMW (aop, unwrap (ptr), unwrap (val), SequentiallyConsistent);
 	return wrap (ins);
 }
 
 LLVMValueRef
-mono_llvm_build_fence (LLVMBuilderRef builder)
+mono_llvm_build_fence (LLVMBuilderRef builder, BarrierKind kind)
 {
 	FenceInst *ins;
+	AtomicOrdering ordering;
 
-	ins = unwrap (builder)->CreateFence (AcquireRelease);
+	g_assert (kind != LLVM_BARRIER_NONE);
+
+	switch (kind) {
+	case LLVM_BARRIER_ACQ:
+		ordering = Acquire;
+		break;
+	case LLVM_BARRIER_REL:
+		ordering = Release;
+		break;
+	case LLVM_BARRIER_SEQ:
+		ordering = SequentiallyConsistent;
+		break;
+	default:
+		g_assert_not_reached ();
+		break;
+	}
+
+	ins = unwrap (builder)->CreateFence (ordering);
 	return wrap (ins);
 }
 
@@ -606,6 +646,20 @@ mono_llvm_create_ee (LLVMModuleProviderRef MP, AllocCodeMemoryCb *alloc_cb, Func
   TargetOptions opts;
   opts.JITExceptionHandling = 1;
 
+#if LLVM_API_VERSION >= 2
+  StringRef cpu_name = sys::getHostCPUName ();
+
+  // EngineBuilder no longer has a copy assignment operator (?)
+  std::unique_ptr<Module> Owner(unwrap(MP));
+  EngineBuilder b (std::move(Owner));
+#ifdef TARGET_AMD64
+  ExecutionEngine *EE = b.setJITMemoryManager (mono_mm).setTargetOptions (opts).setAllocateGVsWithCode (true).setMCPU (cpu_name).setCodeModel (CodeModel::Large).create ();
+#else
+  ExecutionEngine *EE = b.setJITMemoryManager (mono_mm).setTargetOptions (opts).setAllocateGVsWithCode (true).setMCPU (cpu_name).create ();
+#endif
+
+#else
+
   EngineBuilder b (unwrap (MP));
   EngineBuilder &eb = b;
   eb = eb.setJITMemoryManager (mono_mm).setTargetOptions (opts).setAllocateGVsWithCode (true);
@@ -618,6 +672,8 @@ mono_llvm_create_ee (LLVMModuleProviderRef MP, AllocCodeMemoryCb *alloc_cb, Func
 #endif
 
   ExecutionEngine *EE = eb.create ();
+#endif
+
   g_assert (EE);
   mono_ee->EE = EE;
 

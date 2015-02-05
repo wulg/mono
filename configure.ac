@@ -1,7 +1,7 @@
 # Process this file with autoconf to produce a configure script.
 #AC_PREREQ([2.62])
 
-AC_INIT(mono, [3.4.1],
+AC_INIT(mono, [3.99.0],
         [http://bugzilla.xamarin.com/enter_bug.cgi?classification=Mono])
 
 AC_CONFIG_SRCDIR([README.md])
@@ -36,20 +36,15 @@ case $host_os in
 *cygwin* ) LN_S='cp -p';;
 esac
 
-dnl
-dnl libgc checks
-dnl
-
-gc_headers=no
-gc=included
-gc_msg="included Boehm"
-use_included_gc=no
+#
+# libgc defaults
+#
 libgc_configure_args=
 
 if test -d $srcdir/libgc ; then
-  gc_default=included
+  libgc_default=included
 else
-  gc_default=boehm
+  libgc_default=boehm
 fi
 
 # These variables are the CPPFLAGS/CFLAGS passed to libgc's configure
@@ -58,6 +53,9 @@ CPPFLAGS_FOR_LIBGC=$CPPFLAGS
 CFLAGS_FOR_LIBGC=$CFLAGS
 CPPFLAGS_FOR_EGLIB=$CPPFLAGS
 CFLAGS_FOR_EGLIB=$CFLAGS
+
+# libgc uses some deprecated APIs
+CFLAGS_FOR_LIBGC="$CFLAGS -Wno-deprecated-declarations"
 
 #
 # These are the flags that need to be stored in the mono.pc file for 
@@ -117,15 +115,16 @@ case "$host" in
 			AC_DEFINE(MINGW_CROSS_COMPILE,1,[Cross-compiling using MinGW])
 		fi
 		HOST_CC="gcc"
-		# Windows 2000 is required that includes Internet Explorer 5.01
-		CPPFLAGS="$CPPFLAGS -DWINVER=0x0500 -D_WIN32_WINNT=0x0500 -D_WIN32_IE=0x0501 -D_UNICODE -DUNICODE -DWIN32_THREADS -DFD_SETSIZE=1024"
-		LDFLAGS="$LDFLAGS -lmswsock -lws2_32 -lole32 -loleaut32 -lpsapi -lversion -ladvapi32 -lwinmm -lkernel32"
+		# Windows XP SP2 is required
+		CPPFLAGS="$CPPFLAGS -DWINVER=0x0502 -D_WIN32_WINNT=0x0502 -D_WIN32_IE=0x0501 -D_UNICODE -DUNICODE -DWIN32_THREADS -DFD_SETSIZE=1024"
+		LDFLAGS="$LDFLAGS -lmswsock -lws2_32 -lole32 -loleaut32 -lpsapi -lversion -ladvapi32 -lwinmm -lkernel32 -liphlpapi"
 		libmono_cflags="-mms-bitfields -mwindows"
 		libmono_ldflags="-mms-bitfields -mwindows"
 		libdl=
 		libgc_threads=win32
-		gc_default=included
+		libgc_default=included
 		with_sigaltstack=no
+		with_tls=pthread
 		LN_S=cp
 		# This forces libgc to use the DllMain based thread registration code on win32
 		libgc_configure_args="$libgc_configure_args --enable-win32-dllmain=yes"
@@ -140,6 +139,17 @@ case "$host" in
 		need_link_unlink=yes
 		libdl="-ldl"
 		libgc_threads=pthreads
+		with_sigaltstack=no
+		use_sigposix=yes
+		;;
+	*-*-kfreebsd*-gnu)
+		host_win32=no
+		CPPFLAGS="$CPPFLAGS -DGC_FREEBSD_THREADS -D_GNU_SOURCE -D_REENTRANT -DUSE_MMAP -DUSE_MUNMAP -DTHREAD_LOCAL_ALLOC -pthread"
+		libmono_cflags="-D_REENTRANT -DTHREAD_LOCAL_ALLOC -pthread"
+		libmono_ldflags="-lpthread -pthread"
+		libdl="-ldl"
+		libgc_threads=pthreads
+		need_link_unlink=yes
 		with_sigaltstack=no
 		use_sigposix=yes
 		;;
@@ -178,7 +188,7 @@ case "$host" in
 		need_link_unlink=yes
 		AC_DEFINE(PTHREAD_POINTER_ID)
 		libdl=
-		gc_default=boehm
+		libgc_default=boehm
 		libgc_threads=pthreads
 		with_sigaltstack=no
 		use_sigposix=yes
@@ -253,7 +263,7 @@ case "$host" in
 		libmono_cflags="-D_REENTRANT"
 		libdl=
 		libgc_threads=pthreads
-		gc_default=boehm
+		libgc_default=boehm
 		use_sigposix=yes
 		ikvm_native=no
 		AC_DEFINE(DISABLE_SOCKETS,1,[Disable sockets support])
@@ -296,7 +306,6 @@ case "$host" in
 		platform_darwin=yes
 		target_mach=yes
 		CPPFLAGS="$CPPFLAGS -no-cpp-precomp -D_THREAD_SAFE -DGC_MACOSX_THREADS -DPLATFORM_MACOSX -DUSE_MMAP -DUSE_MUNMAP"
-		CPPFLAGS="$CPPFLAGS -DGetCurrentProcess=MonoGetCurrentProcess -DGetCurrentThread=MonoGetCurrentThread -DCreateEvent=MonoCreateEvent"
 		libmono_cflags="-D_THREAD_SAFE"
 		need_link_unlink=yes
 		AC_DEFINE(PTHREAD_POINTER_ID)
@@ -358,6 +367,7 @@ fi
 AC_SUBST(extra_runtime_ldflags)
 AM_CONDITIONAL(HOST_WIN32, test x$host_win32 = xyes)
 AM_CONDITIONAL(TARGET_WIN32, test x$target_win32 = xyes)
+AM_CONDITIONAL(PLATFORM_GNU, echo x$target_os | grep -q -- -gnu)
 AM_CONDITIONAL(PLATFORM_LINUX, echo x$target_os | grep -q linux)
 AM_CONDITIONAL(PLATFORM_DARWIN, test x$platform_darwin = xyes)
 AM_CONDITIONAL(PLATFORM_SIGPOSIX, test x$use_sigposix = xyes)
@@ -430,8 +440,8 @@ AM_ICONV()
 
 AM_CONDITIONAL(NO_VERSION_SCRIPT, test x$no_version_script = xyes)
 
-AC_CHECK_HEADERS(sys/filio.h sys/sockio.h netdb.h utime.h sys/utime.h semaphore.h sys/un.h linux/rtc.h sys/syscall.h sys/mkdev.h sys/uio.h sys/param.h libproc.h)
-AC_CHECK_HEADERS(sys/param.h sys/socket.h sys/ipc.h sys/sem.h sys/utsname.h alloca.h ucontext.h pwd.h sys/select.h netinet/tcp.h netinet/in.h unistd.h sys/types.h link.h asm/sigcontext.h sys/inotify.h)
+AC_CHECK_HEADERS(sys/filio.h sys/sockio.h netdb.h utime.h sys/utime.h semaphore.h sys/un.h linux/rtc.h sys/syscall.h sys/mkdev.h sys/uio.h sys/param.h sys/sysctl.h libproc.h)
+AC_CHECK_HEADERS(sys/param.h sys/socket.h sys/ipc.h sys/sem.h sys/utsname.h alloca.h ucontext.h pwd.h sys/select.h netinet/tcp.h netinet/in.h unistd.h sys/types.h link.h asm/sigcontext.h sys/inotify.h arpa/inet.h)
 AC_CHECK_HEADERS([linux/netlink.h linux/rtnetlink.h],
                   [], [], [#include <stddef.h>
 		  #include <sys/socket.h>
@@ -481,7 +491,7 @@ AC_CHECK_HEADERS(wchar.h)
 AC_CHECK_HEADERS(ieeefp.h)
 AC_MSG_CHECKING(for isinf)
 AC_TRY_LINK([#include <math.h>], [
-	int f = isinf (1);
+	int f = isinf (1.0);
 ], [
 	AC_MSG_RESULT(yes)
 	AC_DEFINE(HAVE_ISINF, 1, [isinf available])
@@ -567,6 +577,7 @@ else
 fi
 CFLAGS="$CFLAGS -g $WARN"
 CFLAGS_FOR_LIBGC="$CFLAGS_FOR_LIBGC -g"
+CPPFLAGS="$CPPFLAGS -g $WARN"
 
 # Where's the 'mcs' source tree?
 if test -d $srcdir/mcs; then
@@ -646,18 +657,6 @@ if test "x$USE_NLS" = "xyes"; then
    fi
 fi
 
-AC_ARG_WITH([libgdiplus], 
-	[  --with-libgdiplus=installed|sibling|<path>	Override the libgdiplus used for System.Drawing tests (defaults to installed)], 
-	[], [with_libgdiplus=installed])
-
-case $with_libgdiplus in
-no|installed) libgdiplus_loc= ;;
-yes|sibling) libgdiplus_loc=`cd ../libgdiplus && pwd`/src/libgdiplus.la ;;
-/*) libgdiplus_loc=$with_libgdiplus ;;
-*) libgdiplus_loc=`pwd`/$with_libgdiplus ;;
-esac
-AC_SUBST([libgdiplus_loc])
-
 AC_PATH_PROG(PKG_CONFIG, pkg-config, no)
 
 pkg_config_path=
@@ -672,6 +671,12 @@ AC_ARG_WITH(crosspkgdir, [  --with-crosspkgdir=/path/to/pkg-config/dir      Chan
 		export PKG_CONFIG_PATH
 	fi
 )
+
+AC_ARG_ENABLE(werror, [  --enable-werror Pass -Werror to the C compiler], werror_flag=$enableval, werror_flag=no)
+if test x$werror_flag = xyes; then
+	WERROR_CFLAGS="-Werror"
+fi
+AC_SUBST([WERROR_CFLAGS])
 
 ac_configure_args="$ac_configure_args \"CPPFLAGS_FOR_EGLIB=$EGLIB_CPPFLAGS\" \"CFLAGS_FOR_EGLIB=$CFLAGS_FOR_EGLIB\""
 AC_CONFIG_SUBDIRS(eglib)
@@ -689,8 +694,6 @@ AC_SUBST(GMODULE_CFLAGS)
 AC_SUBST(GMODULE_LIBS)
 AC_SUBST(BUILD_GLIB_CFLAGS)
 AC_SUBST(BUILD_GLIB_LIBS)
-
-AC_ARG_WITH(gc,   [  --with-gc=boehm,included,none  Controls the Boehm GC config, default=included],[gc=$with_gc],[gc=$gc_default])
 
 # Enable support for fast thread-local storage
 # Some systems have broken support, so we allow to disable it.
@@ -764,7 +767,7 @@ DISABLED_FEATURES=none
 AC_ARG_ENABLE(minimal, [  --enable-minimal=LIST      drop support for LIST subsystems.
      LIST is a comma-separated list from: aot, profiler, decimal, pinvoke, debug, appdomains, verifier, 
      reflection_emit, reflection_emit_save, large_code, logging, com, ssa, generics, attach, jit, simd, soft_debug, perfcounters, normalization, assembly_remapping, shared_perfcounters, remoting,
-	 security, sgen_remset, sgen_marksweep_par, sgen_marksweep_fixed, sgen_marksweep_fixed_par, sgen_copying.],
+	 security, sgen_remset, sgen_marksweep_par, sgen_marksweep_fixed, sgen_marksweep_fixed_par, sgen_copying, shared_handles.],
 [
 	for feature in `echo "$enable_minimal" | sed -e "s/,/ /g"`; do
 		eval "mono_feature_disable_$feature='yes'"
@@ -938,6 +941,11 @@ if test "x$mono_feature_disable_sgen_copying" = "xyes"; then
 	AC_MSG_NOTICE([Disabled major=copying support in SGEN.])
 fi
 
+if test "x$mono_feature_disable_shared_handles" = "xyes"; then
+	AC_DEFINE(DISABLE_SHARED_HANDLES, 1, [Disable inter-process shared handles])
+	AC_SUBST(DISABLE_SHARED_HANDLES)
+fi
+
 AC_ARG_ENABLE(executables, [  --disable-executables disable the build of the runtime executables], enable_executables=$enableval, enable_executables=yes)
 AM_CONDITIONAL(DISABLE_EXECUTABLES, test x$enable_executables = xno)
 
@@ -999,22 +1007,28 @@ AC_TRY_COMPILE([
    AC_MSG_RESULT(no)
 ])
 
+dnl
+dnl Boehm GC configuration
+dnl
+
+AC_ARG_WITH(libgc,   [  --with-gc=boehm,included,none  Controls the Boehm GC config, default=included],[libgc=$with_gc],[libgc=$libgc_default])
+
+AC_ARG_ENABLE(boehm, [  --disable-boehm            Disable the Boehm GC.], support_boehm=$enableval,support_boehm=${support_boehm:-yes})
+AM_CONDITIONAL(SUPPORT_BOEHM, test x$support_boehm = xyes)
+
 AC_ARG_ENABLE(parallel-mark, [  --enable-parallel-mark     Enables GC Parallel Marking], enable_parallel_mark=$enableval, enable_parallel_mark=$parallel_mark)
 if test x$enable_parallel_mark = xyes; then
 	libgc_configure_args="$libgc_configure_args --enable-parallel-mark"
 fi
 
-AC_ARG_ENABLE(boehm, [  --disable-boehm            Disable the Boehm GC.], support_boehm=$enableval,support_boehm=${support_boehm:-yes})
-AM_CONDITIONAL(SUPPORT_BOEHM, test x$support_boehm = xyes)
-
-dnl
-dnl Boehm GC configuration
-dnl
+gc_headers=no
+gc_msg=""
+use_included_gc=no
 LIBGC_CPPFLAGS=
 LIBGC_LIBS=
 LIBGC_STATIC_LIBS=
 libgc_dir=
-case "x$gc" in
+case "x$libgc" in
 	xboehm|xbohem|xyes)
 		AC_CHECK_HEADERS(gc.h gc/gc.h, gc_headers=yes)
 		AC_CHECK_LIB(gc, GC_malloc, found_boehm="yes",,$libdl)
@@ -1047,17 +1061,18 @@ case "x$gc" in
 		fi
 
 		# check whether we need to explicitly allow
-               	# thread registering
-               	AC_CHECK_LIB(gc, GC_allow_register_threads, found_allow_register_threads="yes",,$libdl)
-               	if test "x$found_allow_register_threads" = "xyes"; then
-                        AC_DEFINE(HAVE_GC_ALLOW_REGISTER_THREADS, 1, [GC requires thread registration])
-               	fi
-
+		# thread registering
+		AC_CHECK_LIB(gc, GC_allow_register_threads, found_allow_register_threads="yes",,$libdl)
+		if test "x$found_allow_register_threads" = "xyes"; then
+		   AC_DEFINE(HAVE_GC_ALLOW_REGISTER_THREADS, 1, [GC requires thread registration])
+		fi
 		;;
 
 	xincluded)
 		use_included_gc=yes
-		libgc_dir=libgc
+		if test "x$support_boehm" = "xyes"; then
+			libgc_dir=libgc
+		fi
 
 		LIBGC_CPPFLAGS='-I$(top_srcdir)/libgc/include'
 		LIBGC_LIBS='$(top_builddir)/libgc/libmonogc.la'
@@ -1070,7 +1085,7 @@ case "x$gc" in
 			CFLAGS_FOR_LIBGC="$CFLAGS_FOR_LIBGC -DGC_BUILD -DGC_NOT_DLL"
 		fi
 
-		gc_msg="bundled Boehm GC with typed GC"
+		gc_msg="Included Boehm GC with typed GC"
 		if test x$enable_parallel_mark = xyes; then
 			AC_DEFINE_UNQUOTED(DEFAULT_GC_NAME, "Included Boehm (with typed GC and Parallel Mark)", [GC description])
 			gc_msg="$gc_msg and parallel mark"
@@ -1087,6 +1102,7 @@ case "x$gc" in
 		AC_MSG_WARN("Compiling mono without GC.")
 		AC_DEFINE_UNQUOTED(DEFAULT_GC_NAME, "none", [GC description])
 		AC_DEFINE(HAVE_NULL_GC,1,[No GC support.])
+		gc_msg="none"
 		;;
 	*)
 		AC_MSG_ERROR([Invalid argument to --with-gc.])
@@ -1106,7 +1122,7 @@ AC_SUBST(libgc_dir)
 AC_SUBST(BOEHM_DEFINES)
 
 dnl
-dnl End of libgc checks
+dnl End of Boehm GC Configuration
 dnl
 
 dnl *************************************
@@ -1127,6 +1143,12 @@ AC_TRY_COMPILE([
 ])
 
 AC_CHECK_HEADERS(nacl/nacl_dyncode.h)
+
+dnl ***********************************
+dnl *** Checks for signals
+dnl ***********************************
+AC_CHECK_HEADERS(signal.h)
+AC_CHECK_FUNCS(sigaction)
 
 if test x$target_win32 = xno; then
 
@@ -1183,7 +1205,7 @@ if test x$target_win32 = xno; then
 
 	AC_CHECK_HEADERS(execinfo.h)
 
-	AC_CHECK_HEADERS(sys/auxv.h)
+	AC_CHECK_HEADERS(sys/auxv.h sys/resource.h)
 
 	AC_CHECK_FUNCS(getgrgid_r)
 	AC_CHECK_FUNCS(getgrnam_r)
@@ -1202,6 +1224,7 @@ if test x$target_win32 = xno; then
 	AC_CHECK_FUNCS(dl_iterate_phdr)
 	AC_CHECK_FUNCS(dladdr)
 	AC_CHECK_FUNCS(sysconf)
+	AC_CHECK_FUNCS(getrlimit)
 
 	AC_CHECK_FUNCS(sched_setaffinity)
 	AC_CHECK_FUNCS(sched_getcpu)
@@ -1502,15 +1525,122 @@ if test x$target_win32 = xno; then
 	])
 	
 	dnl **********************************
+	dnl *** Check for getaddrinfo ***
+	dnl **********************************
+	AC_MSG_CHECKING(for getaddrinfo)
+		AC_TRY_LINK([
+		#include <stdio.h>
+		#include <netdb.h>
+	], [
+		getaddrinfo(NULL,NULL,NULL,NULL);
+	], [
+		# Yes, we have it...
+		AC_MSG_RESULT(yes)
+		AC_DEFINE(HAVE_GETADDRINFO, 1, [Have getaddrinfo])
+	], [
+		AC_MSG_RESULT(no)
+	])
+
+	dnl **********************************
 	dnl *** Check for gethostbyname2_r ***
 	dnl **********************************
 	AC_MSG_CHECKING(for gethostbyname2_r)
-		AC_TRY_LINK([#include <netdb.h>], [
+		AC_TRY_LINK([
+		#include <stdio.h>
+		#include <netdb.h>
+	], [
+
 		gethostbyname2_r(NULL,0,NULL,NULL,0,NULL,NULL);
 	], [
 		# Yes, we have it...
 		AC_MSG_RESULT(yes)
 		AC_DEFINE(HAVE_GETHOSTBYNAME2_R, 1, [Have gethostbyname2_r])
+	], [
+		AC_MSG_RESULT(no)
+	])
+
+	dnl **********************************
+	dnl *** Check for gethostbyname2 ***
+	dnl **********************************
+	AC_MSG_CHECKING(for gethostbyname2)
+		AC_TRY_LINK([
+		#include <stdio.h>
+		#include <netdb.h>
+	], [
+		gethostbyname2(NULL,0);
+	], [
+		# Yes, we have it...
+		AC_MSG_RESULT(yes)
+		AC_DEFINE(HAVE_GETHOSTBYNAME2, 1, [Have gethostbyname2])
+	], [
+		AC_MSG_RESULT(no)
+	])
+
+	dnl **********************************
+	dnl *** Check for gethostbyname ***
+	dnl **********************************
+	AC_MSG_CHECKING(for gethostbyname)
+		AC_TRY_LINK([
+		#include <stdio.h>
+		#include <netdb.h>
+	], [
+		gethostbyname(NULL);
+	], [
+		# Yes, we have it...
+		AC_MSG_RESULT(yes)
+		AC_DEFINE(HAVE_GETHOSTBYNAME, 1, [Have gethostbyname])
+	], [
+		AC_MSG_RESULT(no)
+	])
+
+	dnl **********************************
+	dnl *** Check for getprotobyname ***
+	dnl **********************************
+	AC_MSG_CHECKING(for getprotobyname)
+		AC_TRY_LINK([
+		#include <stdio.h>
+		#include <netdb.h>
+	], [
+		getprotobyname(NULL);
+	], [
+		# Yes, we have it...
+		AC_MSG_RESULT(yes)
+		AC_DEFINE(HAVE_GETPROTOBYNAME, 1, [Have getprotobyname])
+	], [
+		AC_MSG_RESULT(no)
+	])
+
+	dnl **********************************
+	dnl *** Check for getnameinfo ***
+	dnl **********************************
+	AC_MSG_CHECKING(for getnameinfo)
+		AC_TRY_LINK([
+		#include <stdio.h>
+		#include <netdb.h>
+	], [
+		getnameinfo (NULL, 0, NULL, 0, NULL, 0, 0);
+	], [
+		# Yes, we have it...
+		AC_MSG_RESULT(yes)
+		AC_DEFINE(HAVE_GETNAMEINFO, 1, [Have getnameinfo])
+	], [
+		AC_MSG_RESULT(no)
+	])
+
+
+	dnl **********************************
+	dnl *** Check for inet_ntop ***
+	dnl **********************************
+	AC_MSG_CHECKING(for inet_ntop)
+		AC_TRY_LINK([
+		#include <stdio.h>
+		#include <arpa/inet.h>
+	], [
+		inet_ntop (0, NULL, NULL, 0);
+	], [
+		# Yes, we have it...
+		AC_MSG_RESULT(yes)
+		AC_DEFINE(HAVE_INET_NTOP, 1, [Have inet_ntop])
 	], [
 		AC_MSG_RESULT(no)
 	])
@@ -1521,30 +1651,6 @@ if test x$target_win32 = xno; then
 	AC_CHECK_FUNC(gethostbyaddr, , AC_CHECK_LIB(nsl, gethostbyaddr, LIBS="$LIBS -lnsl"))
 
 	AC_CHECK_FUNCS(inet_pton inet_aton)
-
-	dnl ***********************************************
-	dnl *** Checks for size of sockaddr_un.sun_path ***
-	dnl ***********************************************
-	# AC_CHECK_SIZEOF can't cope with struct members :-(
-	AC_MSG_CHECKING(size of sockaddr_un.sun_path)
-	AC_CACHE_VAL(mono_cv_sizeof_sunpath,
-		[AC_TRY_RUN([
-			#include <sys/types.h>
-			#include <stdio.h>
-			#include <sys/un.h>
-
-			int main(void) {
-				struct sockaddr_un sock_un;
-				FILE *f=fopen("conftestval", "w");
-				if(!f) exit(1);
-				fprintf(f, "%d\n", sizeof(sock_un.sun_path));
-				exit(0);
-			}
-		], mono_cv_sizeof_sunpath=`cat conftestval`,
-		   mono_cv_sizeof_sunpath=0,
-		   mono_cv_sizeof_sunpath=0)])dnl
-	AC_MSG_RESULT($mono_cv_sizeof_sunpath)
-	AC_DEFINE_UNQUOTED(MONO_SIZEOF_SUNPATH, $mono_cv_sizeof_sunpath, [Sizeof sock_un.sun_path])
 
 	dnl *****************************
 	dnl *** Checks for libxnet    ***
@@ -1604,11 +1710,23 @@ if test x$target_win32 = xno; then
 	AC_CHECK_FUNCS(pthread_attr_getstack pthread_attr_getstacksize)
 	AC_CHECK_FUNCS(pthread_get_stacksize_np pthread_get_stackaddr_np)
 
-	dnl ***********************************
-	dnl *** Checks for signals
-	dnl ***********************************
-	AC_CHECK_HEADERS(signal.h)
-	AC_CHECK_FUNCS(sigaction)
+	dnl **********************************
+	dnl *** Check for mincore ***
+	dnl **********************************
+	AC_MSG_CHECKING(for mincore)
+		AC_TRY_LINK([
+		#include <stdio.h>
+		#include <sys/types.h>
+		#include <sys/mman.h>
+	], [
+		mincore(NULL, 0, NULL);
+	], [
+		# Yes, we have it...
+		AC_MSG_RESULT(yes)
+		AC_DEFINE(HAVE_MINCORE, 1, [Have mincore])
+	], [
+		AC_MSG_RESULT(no)
+	])
 
 	dnl ***********************************
 	dnl *** Checks for working __thread ***
@@ -2162,7 +2280,97 @@ else
 			AC_MSG_RESULT(no)
 		])
 	])
-	AC_CHECK_FUNCS(GetProcessId)
+
+	dnl **********************************
+	dnl *** Check for getaddrinfo ***
+	dnl **********************************
+	AC_MSG_CHECKING(for getaddrinfo)
+		AC_TRY_LINK([
+		#include <stdio.h>
+		#include <winsock2.h>
+		#include <ws2tcpip.h>
+	], [
+		getaddrinfo(NULL,NULL,NULL,NULL);
+	], [
+		# Yes, we have it...
+		AC_MSG_RESULT(yes)
+		AC_DEFINE(HAVE_GETADDRINFO, 1, [Have getaddrinfo])
+	], [
+		AC_MSG_RESULT(no)
+	])
+
+	dnl **********************************
+	dnl *** Check for gethostbyname ***
+	dnl **********************************
+	AC_MSG_CHECKING(for gethostbyname)
+		AC_TRY_LINK([
+		#include <stdio.h>
+		#include <winsock2.h>
+		#include <ws2tcpip.h>
+	], [
+		gethostbyname(NULL);
+	], [
+		# Yes, we have it...
+		AC_MSG_RESULT(yes)
+		AC_DEFINE(HAVE_GETHOSTBYNAME, 1, [Have gethostbyname])
+	], [
+		AC_MSG_RESULT(no)
+	])
+
+	dnl **********************************
+	dnl *** Check for getprotobyname ***
+	dnl **********************************
+	AC_MSG_CHECKING(for getprotobyname)
+		AC_TRY_LINK([
+		#include <stdio.h>
+		#include <winsock2.h>
+		#include <ws2tcpip.h>
+	], [
+		getprotobyname(NULL);
+	], [
+		# Yes, we have it...
+		AC_MSG_RESULT(yes)
+		AC_DEFINE(HAVE_GETPROTOBYNAME, 1, [Have getprotobyname])
+	], [
+		AC_MSG_RESULT(no)
+	])
+
+	dnl **********************************
+	dnl *** Check for getnameinfo ***
+	dnl **********************************
+	AC_MSG_CHECKING(for getnameinfo)
+		AC_TRY_LINK([
+		#include <stdio.h>
+		#include <winsock2.h>
+		#include <ws2tcpip.h>
+	], [
+		getnameinfo (NULL, 0, NULL, 0, NULL, 0, 0);
+	], [
+		# Yes, we have it...
+		AC_MSG_RESULT(yes)
+		AC_DEFINE(HAVE_GETNAMEINFO, 1, [Have getnameinfo])
+	], [
+		AC_MSG_RESULT(no)
+	])
+
+	dnl **********************************
+	dnl *** Check for inet_ntop ***
+	dnl **********************************
+	AC_MSG_CHECKING(for inet_ntop)
+		AC_TRY_LINK([
+		#include <stdio.h>
+		#include <winsock2.h>
+		#include <ws2tcpip.h>
+	], [
+		inet_ntop (0, NULL, NULL, 0);
+	], [
+		# Yes, we have it...
+		AC_MSG_RESULT(yes)
+		AC_DEFINE(HAVE_INET_NTOP, 1, [Have inet_ntop])
+	], [
+		AC_MSG_RESULT(no)
+	])
+
 	AC_CHECK_DECLS(InterlockedExchange64, [], [], [[#include <windows.h>]])
 	AC_CHECK_DECLS(InterlockedCompareExchange64, [], [], [[#include <windows.h>]])
 	AC_CHECK_DECLS(InterlockedDecrement64, [], [], [[#include <windows.h>]])
@@ -2170,6 +2378,16 @@ else
 	AC_CHECK_DECLS(InterlockedAdd, [], [], [[#include <windows.h>]])
 	AC_CHECK_DECLS(InterlockedAdd64, [], [], [[#include <windows.h>]])
 	AC_CHECK_DECLS(__readfsdword, [], [], [[#include <windows.h>]])
+
+	AC_MSG_CHECKING(for GetProcessId)
+	AC_TRY_COMPILE([#include <windows.h>], [
+		GetProcessId (0);
+	], [
+	   AC_MSG_RESULT(yes)
+	   AC_DEFINE(HAVE_GETPROCESSID)
+	], [
+	   AC_MSG_RESULT(no)
+	])
 fi
 
 dnl socklen_t check
@@ -2286,6 +2504,7 @@ if test "x$ac_cv_have_dev_random" = "xno" \
 fi
  
 AC_MSG_CHECKING([if inter-process shared handles are requested])
+# Same as --enable-minimal=shared_handles
 AC_ARG_ENABLE(shared-handles, [  --disable-shared-handles disable inter-process shared handles], try_shared_handles=$enableval, try_shared_handles=yes)
 AC_MSG_RESULT($try_shared_handles)
 if test "x$try_shared_handles" != "xyes"; then
@@ -2294,9 +2513,6 @@ if test "x$try_shared_handles" != "xyes"; then
 fi
 
 AC_ARG_ENABLE(bcl-opt, [  --disable-bcl-opt	BCL is compiled with no optimizations (allows accurate BCL debugging)], test_bcl_opt=$enableval, test_bcl_opt=yes)
-
-AC_ARG_ENABLE(nunit-tests, [  --enable-nunit-tests	Run the nunit tests of the class library on 'make check'])
-AM_CONDITIONAL(ENABLE_NUNIT_TESTS, [test x$enable_nunit_tests = xyes])
 
 AC_MSG_CHECKING([if big-arrays are to be enabled])
 AC_ARG_ENABLE(big-arrays,  [  --enable-big-arrays	Enable the allocation and indexing of arrays greater than Int32.MaxValue], enable_big_arrays=$enableval, enable_big_arrays=no)
@@ -2419,6 +2635,9 @@ AC_ARG_WITH(llvm, [  --with-llvm=<llvm prefix>    Enable the LLVM back-end], ena
 if test "x$enable_llvm" = "xyes"; then
    if test "x$with_llvm" != "x"; then
    	  LLVM_CONFIG=$with_llvm/bin/llvm-config
+   	  if test x$target_win32 = xyes; then
+   	  	LLVM_CONFIG=$LLVM_CONFIG.exe
+   	  fi
 	  if test ! -x $LLVM_CONFIG; then
 	  	 AC_MSG_ERROR([LLVM executable $LLVM_CONFIG not found.])
       fi
@@ -2435,6 +2654,8 @@ if test "x$enable_llvm" = "xyes"; then
 		llvm_codegen="armcodegen"
 		;;
    esac
+
+   if test "x$target_win32" = "xno"; then
 
    # The output of --cflags seems to include optimizations flags too
    LLVM_CFLAGS=`$LLVM_CONFIG --cflags | sed -e 's/-O2//g' | sed -e 's/-O0//g' | sed -e 's/-fomit-frame-pointer//g' | sed -e 's/-fPIC//g'`
@@ -2456,8 +2677,6 @@ if test "x$enable_llvm" = "xyes"; then
 
    # Should be something like '2.6' or '2.7svn'
    llvm_version=`$LLVM_CONFIG --version`
-   major_version=`echo $llvm_version | cut -c 1`
-   minor_version=`echo $llvm_version | cut -c 3`
    llvm_api_version=`$LLVM_CONFIG --mono-api-version 2>/dev/null`
    AC_MSG_CHECKING(LLVM version)
    AC_MSG_RESULT($llvm_version)
@@ -2467,24 +2686,40 @@ if test "x$enable_llvm" = "xyes"; then
 	  	 	AC_MSG_ERROR([Expected llvm version $expected_llvm_version, but llvm-config --version returned $llvm_version"])
 	  	 fi
 	  fi
-	  if test "x$llvm_api_version" = "x"; then
-		LLVM_CFLAGS="$LLVM_CFLAGS -DLLVM_API_VERSION=0"
-		LLVM_CXXFLAGS="$LLVM_CXXFLAGS -DLLVM_API_VERSION=0"
-	  else
-		LLVM_CFLAGS="$LLVM_CFLAGS -DLLVM_API_VERSION=$llvm_api_version"
-		LLVM_CXXFLAGS="$LLVM_CXXFLAGS -DLLVM_API_VERSION=$llvm_api_version"
-	  fi
    else
 	  AC_MSG_ERROR([Compiling with stock LLVM is not supported, please use the Mono LLVM repo at https://github.com/mono/llvm, with the GIT branch which matches this version of mono, i.e. 'mono-2-10' for Mono 2.10.])
    fi
 
-   AC_DEFINE_UNQUOTED(LLVM_MAJOR_VERSION, $major_version, [Major version of LLVM libraries])
-   AC_DEFINE_UNQUOTED(LLVM_MINOR_VERSION, $minor_version, [Minor version of LLVM libraries])
-   AC_DEFINE_UNQUOTED(LLVM_VERSION, "$llvm_version", [Full version of LLVM libraties])
+   else
+       LLVM_CFLAGS="-I$with_llvm/include -DNDEBUG -D__NO_CTYPE_INLINE -D_GNU_SOURCE -D__STDC_CONSTANT_MACROS -D__STDC_FORMAT_MACROS -D__STDC_LIMIT_MACROS"
+       LLVM_CXXFLAGS="$LLVM_CFLAGS -std=gnu++11 -fvisibility-inlines-hidden -fno-exceptions -fno-rtti -Woverloaded-virtual -Wcast-qual"
+       LLVM_LDFLAGS="-L$with_llvm/lib"
+       LLVM_SYSTEM_LIBS="-lshell32 -lpsapi -limagehlp -ldbghelp -lm"
+       LLVM_LIBS="-lLLVMLTO -lLLVMObjCARCOpts -lLLVMLinker -lLLVMipo -lLLVMVectorize -lLLVMBitWriter \
+         -lLLVMARMDisassembler -lLLVMARMCodeGen -lLLVMARMAsmParser -lLLVMARMDesc -lLLVMARMInfo \
+         -lLLVMARMAsmPrinter -lLLVMTableGen -lLLVMDebugInfo -lLLVMOption -lLLVMX86Disassembler \
+         -lLLVMX86AsmParser -lLLVMX86CodeGen -lLLVMSelectionDAG -lLLVMAsmPrinter -lLLVMX86Desc \
+         -lLLVMMCDisassembler -lLLVMX86Info -lLLVMX86AsmPrinter -lLLVMX86Utils -lLLVMJIT \
+         -lLLVMIRReader -lLLVMAsmParser -lLLVMLineEditor -lLLVMMCAnalysis -lLLVMInstrumentation \
+         -lLLVMInterpreter -lLLVMCodeGen -lLLVMScalarOpts -lLLVMInstCombine -lLLVMTransformUtils \
+         -lLLVMipa -lLLVMAnalysis -lLLVMProfileData -lLLVMMCJIT -lLLVMTarget -lLLVMRuntimeDyld \
+         -lLLVMObject -lLLVMMCParser -lLLVMBitReader -lLLVMExecutionEngine -lLLVMMC -lLLVMCore \
+         -lLLVMSupport -lstdc++"
+       LLVM_LIBS="$LLVM_LIBS $LLVM_SYSTEM_LIBS"
 
-   # Have to pass these on the command line since mini-llvm-cpp.h already includes
-   # llvm's config.h
-   LLVM_CXXFLAGS="$LLVM_CXXFLAGS -DLLVM_MAJOR_VERSION=$major_version -DLLVM_MINOR_VERSION=$minor_version"
+       llvm_config_path=$with_llvm/include/llvm/Config/llvm-config.h
+       llvm_api_version=`awk '/MONO_API_VERSION/ { print $3 }' $llvm_config_path`
+   fi  
+
+   if test "x$llvm_api_version" = "x"; then
+	  LLVM_CFLAGS="$LLVM_CFLAGS -DLLVM_API_VERSION=0"
+	  LLVM_CXXFLAGS="$LLVM_CXXFLAGS -DLLVM_API_VERSION=0"
+   else
+	  LLVM_CFLAGS="$LLVM_CFLAGS -DLLVM_API_VERSION=$llvm_api_version"
+	  LLVM_CXXFLAGS="$LLVM_CXXFLAGS -DLLVM_API_VERSION=$llvm_api_version"
+   fi   
+
+   AC_DEFINE_UNQUOTED(LLVM_VERSION, "$llvm_version", [Full version of LLVM libraties])
 
    AC_SUBST(LLVM_CFLAGS)
    AC_SUBST(LLVM_CXXFLAGS)
@@ -2502,19 +2737,18 @@ AM_CONDITIONAL(LOADED_LLVM, [test x$enable_loadedllvm = xyes])
 TARGET="unknown"
 ACCESS_UNALIGNED="yes"
 
-JIT_SUPPORTED=no
-INTERP_SUPPORTED=no
 LIBC="libc.so.6"
 INTL="libc.so.6"
 SQLITE="libsqlite.so.0"
 SQLITE3="libsqlite3.so.0"
 X11="libX11.so"
-XINERAMA="libXinerama.so"
+GDKX11="libgdk-x11-2.0.so.0"
+GTKX11="libgtk-x11-2.0.so.0"
+XINERAMA="libXinerama.so.1"
 
 sizeof_register="SIZEOF_VOID_P"
 
 jit_wanted=true
-interp_wanted=false
 sgen_supported=false
 boehm_supported=true
 case "$host" in
@@ -2523,7 +2757,6 @@ case "$host" in
 		arch_target=mips;
 		sgen_supported=true
 		ACCESS_UNALIGNED="no"
-		JIT_SUPPORTED=yes
 
 		AC_MSG_CHECKING(for mips n32)
 		AC_TRY_COMPILE([],[
@@ -2541,7 +2774,6 @@ case "$host" in
 	i*86-*-*)
 		TARGET=X86;
 		arch_target=x86;
-		JIT_SUPPORTED=yes
 		case $host_os in
 		  solaris*)
 			LIBC="libc.so"
@@ -2579,7 +2811,7 @@ case "$host" in
 			sgen_supported=true
 			AOT_SUPPORTED="yes"
 			;;
-		  darwin*|openbsd*|freebsd*)
+		  openbsd*|freebsd*|kfreebsd-gnu*)
 			sgen_supported=true
 		        ;;
 		esac
@@ -2587,7 +2819,6 @@ case "$host" in
 	x86_64-*-* | amd64-*-*)
 		TARGET=AMD64;
 		arch_target=amd64;
-		JIT_SUPPORTED=yes
 		if test "x$ac_cv_sizeof_void_p" = "x4"; then
 			AC_DEFINE(__mono_ilp32__, 1, [64 bit mode with 4 byte longs and pointers])
 			sizeof_register=8
@@ -2597,7 +2828,14 @@ case "$host" in
 			sgen_supported=true
 			AOT_SUPPORTED="yes"
 			;;
-		  darwin*|openbsd*|freebsd*)
+		  darwin*)
+			sgen_supported=true
+			AOT_SUPPORTED="yes"
+			;;
+		  openbsd*|freebsd*|kfreebsd-gnu*)
+			sgen_supported=true
+			;;
+		  mingw*)
 			sgen_supported=true
 			;;
 		esac
@@ -2612,7 +2850,6 @@ case "$host" in
 		TARGET=IA64
 		arch_target=ia64
 		ACCESS_UNALIGNED="no"
-		JIT_SUPPORTED=yes
 		LIBC="libc.so.6.1"
 		INTL="libc.so.6.1"
 		AC_CHECK_LIB(unwind, _U_dyn_register, [], [AC_MSG_ERROR(library libunwind not found)])
@@ -2625,7 +2862,6 @@ case "$host" in
 			TARGET=SPARC
 		fi
 		arch_target=sparc;
-		JIT_SUPPORTED=yes
 		ACCESS_UNALIGNED="no"
 		case $host_os in
 		  linux*) ;;
@@ -2658,7 +2894,6 @@ case "$host" in
 			CPPFLAGS="$CPPFLAGS -D__mono_ppc__"
 		fi
 		arch_target=ppc;
-		JIT_SUPPORTED=yes
 		case $host_os in
 		  linux*|darwin*)
 			sgen_supported=true
@@ -2669,17 +2904,13 @@ case "$host" in
 		TARGET=ARM;
 		arch_target=arm;
 		ACCESS_UNALIGNED="no"
-		JIT_SUPPORTED=yes
 		CPPFLAGS="$CPPFLAGS -D__ARM_EABI__"
-		# libgc's gc_locks.h depends on this
-	    CPPFLAGS_FOR_LIBGC="$CPPFLAGS_FOR_LIBGC"
 		sgen_supported=true
 		;;
 	arm*-linux*)
 		TARGET=ARM;
 		arch_target=arm;
 		ACCESS_UNALIGNED="no"
-		JIT_SUPPORTED=yes
 		sgen_supported=true
 		AOT_SUPPORTED="yes"
 		CPPFLAGS="$CPPFLAGS -D__ARM_EABI__"
@@ -2689,7 +2920,6 @@ case "$host" in
 #		TARGET=ARM;
 #		arch_target=arm;
 #		ACCESS_UNALIGNED="no"
-#		JIT_SUPPORTED=yes
 #		sgen_supported=true
 #		AOT_SUPPORTED="no"
 #		;;
@@ -2697,7 +2927,6 @@ case "$host" in
 		# https://lkml.org/lkml/2012/7/15/133
 		TARGET=ARM64
 		arch_target=arm64
-		JIT_SUPPORTED=yes
 		sgen_supported=true
 		boehm_supported=false
 		;;
@@ -2705,7 +2934,6 @@ case "$host" in
 		TARGET=S390X;
 		arch_target=s390x;
 		ACCESS_UNALIGNED="yes"
-		JIT_SUPPORTED=yes
 		sgen_supported=true
 		CFLAGS="$CFLAGS -mbackchain -D__USE_STRING_INLINES"
 		;;
@@ -2721,9 +2949,7 @@ if test "x$host" != "x$target"; then
 		TARGET=ARM;
 		arch_target=arm;
 		ACCESS_UNALIGNED="no"
-		JIT_SUPPORTED=yes
 		CPPFLAGS="$CPPFLAGS -D__ARM_EABI__"
-		jit_wanted=true
 		# Can't use tls, since it depends on the runtime detection of tls offsets
 		# in mono-compiler.h
 		with_tls=pthread
@@ -2739,7 +2965,6 @@ if test "x$host" != "x$target"; then
 		sizeof_register=8
 		target_byte_order=G_BIG_ENDIAN
 		;;
-
    powerpc64-xbox360-linux-gnu)
 		TARGET=POWERPC64
 		arch_target=powerpc64
@@ -2762,7 +2987,6 @@ if test "x$host" != "x$target"; then
 #		arch_target=arm
 #		AC_DEFINE(TARGET_ARM, 1, [...])
 #		ACCESS_UNALIGNED="no"
-#		JIT_SUPPORTED=yes
 #		sizeof_register=4
 #               CPPFLAGS="$CPPFLAGS \
 #                    -D__ARM_EABI__ \
@@ -2772,7 +2996,6 @@ if test "x$host" != "x$target"; then
 #                    -DDISABLE_SOCKETS \
 #                    -DDISABLE_ATTACH \
 #                    -DUSE_NEWLIB"
-#		jit_wanted=true
 		# Can't use tls, since it depends on the runtime detection of tls offsets
 		# in mono-compiler.h
 #		with_tls=pthread
@@ -2789,9 +3012,7 @@ if test "x$host" != "x$target"; then
 		AC_DEFINE(TARGET_ARM, 1, [...])
 		AC_DEFINE(TARGET_ANDROID, 1, [...])
 		ACCESS_UNALIGNED="no"
-		JIT_SUPPORTED=yes
 		CPPFLAGS="$CPPFLAGS -D__ARM_EABI__"
-		jit_wanted=true
 		# Can't use tls, since it depends on the runtime detection of tls offsets
 		# in mono-compiler.h
 		with_tls=pthread
@@ -2806,10 +3027,43 @@ if test "x$host" != "x$target"; then
 			;;
 		esac
 		;;
+   i686*-linux-*)
+		TARGET=X86;
+		arch_target=x86;
+		AC_DEFINE(TARGET_X86, 1, [...])
+		AC_DEFINE(TARGET_ANDROID, 1, [...])
+		CPPFLAGS="$CPPFLAGS"
+		sgen_supported=true
+		# Can't use tls, since it depends on the runtime detection of tls offsets
+		# in mono-compiler.h		
+		with_tls=pthread
+		target_mach=no
+		;;
+   x86_64*-linux-*)
+		TARGET=AMD64;
+		arch_target=amd64;
+		AC_DEFINE(TARGET_AMD64, 1, [...])
+		AC_DEFINE(TARGET_ANDROID, 1, [...])
+		CPPFLAGS="$CPPFLAGS"
+		sgen_supported=true
+		# Can't use tls, since it depends on the runtime detection of tls offsets
+		# in mono-compiler.h
+		with_tls=pthread
+		target_mach=no
+		;;
+   aarch64*-linux-*)
+		TARGET=ARM64;
+		arch_target=arm64;
+		AC_DEFINE(TARGET_ARM64, 1, [...])
+		AC_DEFINE(TARGET_ANDROID, 1, [...])
+		CPPFLAGS="$CPPFLAGS"
+		# Can't use tls, since it depends on the runtime detection of tls offsets
+		# in mono-compiler.h
+		with_tls=pthread
+		target_mach=no
+		;;
 	aarch64-*)
 		TARGET=ARM64
-		JIT_SUPPORTED=yes
-		jit_wanted=true
 		;;
 	*)
 		AC_MSG_ERROR([Cross compiling is not supported for target $target])
@@ -2853,6 +3107,46 @@ SPARC64)
 	;;
 esac
 
+dnl *************
+dnl *** VTUNE ***
+dnl *************
+
+AC_ARG_ENABLE(vtune,[  --enable-vtune	Enable the VTUNE back-end], enable_vtune=$enableval, enable_vtune=no)
+AC_ARG_WITH(vtune, [  --with-vtune=<vtune prefix>	Enable jit vtune profiling], enable_vtune=yes,)
+
+AM_CONDITIONAL(HAVE_VTUNE, test x$enable_vtune = xyes)
+
+if test "x$enable_vtune" = "xyes"; then
+	if test "x$with_vtune" = "x"; then
+		VTUNE_PATH=/opt/intel/vtune_amplifier_xe
+	else
+		VTUNE_PATH=$with_vtune
+	fi
+	VTUNE_INCLUDE=$VTUNE_PATH/include
+	case "$TARGET" in
+	X86)
+		VTUNE_LIB=$VTUNE_PATH/lib32
+		;;
+	AMD64)
+		VTUNE_LIB=$VTUNE_PATH/lib64
+		;;
+	*)
+		AC_MSG_ERROR([Unsupported target $TARGET for VTUNE.])
+		;;
+	esac
+	if test ! -f $VTUNE_INCLUDE/jitprofiling.h; then
+		AC_MSG_ERROR([VTUNE $VTUNE_INCLUDE/jitprofiling.h not found.])
+	fi
+	if test ! -f $VTUNE_LIB/libjitprofiling.a; then
+		AC_MSG_ERROR([VTUNE $VTUNE_LIB/libjitprofiling.a not found.])
+	fi
+
+	VTUNE_CFLAGS=-I$VTUNE_INCLUDE
+	VTUNE_LIBS="-L/$VTUNE_LIB/ -ljitprofiling"
+
+	AC_SUBST(VTUNE_LIBS)
+	AC_SUBST(VTUNE_CFLAGS)
+fi
 dnl Use GCC atomic ops if they work on the target.
 if test x$GCC = "xyes"; then
 	case $TARGET in
@@ -2932,27 +3226,7 @@ fi
 AC_SUBST(SGEN_DEFINES)
 AM_CONDITIONAL(SUPPORT_SGEN, test x$buildsgen = xyes)
 
-USEJIT=false
-if test x$JIT_SUPPORTED = xyes; then
-   if $jit_wanted; then
-      USEJIT=true
-      jit_status="Building and using the JIT"
-   else
-      if $interp_wanted; then
-         jit_status="Building the JIT, defaulting to the interpreter"
-      else
-         AC_ERROR(No JIT or interpreter support available or selected.)
-      fi
-   fi
-else
-   if test x$interp_wanted = xtrue; then
-      jit_status="interpreter"
-   else
-      AC_ERROR(No JIT or interpreter support available or selected.)
-   fi
-fi
-
-AM_CONDITIONAL(USE_JIT, test x$USEJIT = xtrue)
+jit_status="Building and using the JIT"
 
 libsuffix=".so"
 
@@ -2964,10 +3238,17 @@ case "$host" in
 	SQLITE="libsqlite.0.dylib"
 	SQLITE3="libsqlite3.0.dylib"
 	X11="libX11.dylib"
+	GDKX11="libgdk-x11-2.0.dylib"
+	GTKX11="libgtk-x11-2.0.dylib"
 	;;
      *-*-*netbsd*)
 	LIBC="libc.so.12"
 	INTL="libintl.so.0"
+	;;
+     *-*-kfreebsd*-gnu)
+	LIBC="libc.so.0.1"
+	INTL="libc.so.0.1"
+	X11="libX11.so.6"
 	;;
     *-*-*freebsd*)
     	LIBC="libc.so"
@@ -2995,20 +3276,8 @@ case "$host" in
 	done
 	
 	if test "x$X11" = "xlibX11.so"; then
-		AC_MSG_WARN([Could not find X development libs. Do you have the -devel package installed? Assuming libX11.so.6...]);
+		AC_MSG_WARN([Could not find libX11.so. Do you have X.org or XFree86 installed? Assuming libX11.so.6...]);
 		X11=libX11.so.6
-	fi
-	AC_MSG_CHECKING(for the soname of libXinerama.so)
-	for i in $x_libraries $dlsearch_path; do
-		for r in 1 2 3; do
-			if test -f $i/libXinerama.so.$r; then
-				XINERAMA=libXinerama.so.$r
-				AC_MSG_RESULT($XINERAMA)
-			fi
-		done
-	done
-	if test "x$XINERAMA" = "xlibXinerama.so"; then
-		AC_MSG_WARN([Could not find Xinerama development libs. Support for multiple monitors might not work...]);
 	fi
 	;;
 esac
@@ -3016,24 +3285,32 @@ esac
 
 AC_SUBST(libsuffix)
 
-if test "x$TARGET" = "xAMD64" -o "x$TARGET" = "xX86"; then
-	if test "x$with_tls" = "x__thread"; then
-		#
-		# On some linux distributions, TLS works in executables, but linking 
-		# against a shared library containing TLS fails with:
-		# undefined reference to `__tls_get_addr'
-		#
-		rm -f conftest.c conftest.so conftest
-		echo "static __thread int foo; int main () { foo = 5; return 0; }" > conftest.c
-		$CC -fPIC --shared -o conftest.so conftest.c > /dev/null 2>&1
-		$CC -o conftest conftest.so > /dev/null 2>&1
-		if test ! -f conftest; then
-		   AC_MSG_WARN([Disabling usage of __thread.]);
-		   with_tls=pthread
-		fi
-		rm -f conftest.c conftest.so conftest
-	fi
-fi
+AC_ARG_WITH([libgdiplus],
+	[  --with-libgdiplus=installed|sibling|<path>	Override the libgdiplus used for System.Drawing tests (defaults to installed)],
+	[], [with_libgdiplus=installed])
+
+# default install location
+libgdiplus_install_loc=libgdiplus${libsuffix}
+case $with_libgdiplus in
+    no|installed)
+    libgdiplus_loc=
+    ;;
+
+    yes|sibling)
+    libgdiplus_loc=`cd ../libgdiplus && pwd`/src/libgdiplus.la
+    ;;
+
+    /*) # absolute path, assume it is an install location
+    libgdiplus_loc=$with_libgdiplus
+    libgdiplus_install_loc=$with_libgdiplus
+    ;;
+
+    *)
+    libgdiplus_loc=`pwd`/$with_libgdiplus
+    ;;
+esac
+AC_SUBST([libgdiplus_loc])
+AC_SUBST([libgdiplus_install_loc])
 
 AC_ARG_ENABLE(icall-symbol-map,[  --enable-icall-symbol-map Generate tables which map icall functions to their C symbols], icall_symbol_map=$enableval, icall_symbol_map=no)
 if test "x$icall_symbol_map" = "xyes"; then
@@ -3200,7 +3477,7 @@ if test ${ACCESS_UNALIGNED} = no; then
 	CPPFLAGS="$CPPFLAGS -DNO_UNALIGNED_ACCESS"
 fi
 
-case "x$gc" in
+case "x$libgc" in
 	xincluded)
 		# Pass CPPFLAGS to libgc configure
 		# We should use a separate variable for this to avoid passing useless and
@@ -3218,12 +3495,12 @@ case "x$gc" in
 		# (infinite recursion, undefined parking behavior, etc)
 		TMP_CPPFLAGS=`echo $TMP_CPPFLAGS | sed -e 's/-finstrument-for-thread-suspension//g'`
 		ac_configure_args="$ac_configure_args --disable-embed-check --with-libgc-threads=$libgc_threads $libgc_configure_args \"CPPFLAGS_FOR_LIBGC=$TMP_CPPFLAGS\" \"CFLAGS_FOR_LIBGC=$CFLAGS_FOR_LIBGC\""
-		AC_CONFIG_SUBDIRS(libgc)
+		if test "x$support_boehm" = "xyes"; then
+			AC_CONFIG_SUBDIRS(libgc)
+		fi
 		;;
 esac
 
-AC_ARG_WITH(profile2,  [  --with-profile2=yes,no          If you want to install the 2.0/3.5 FX (defaults to yes)],            [], [with_profile2=yes])
-AC_ARG_WITH(profile4,  [  --with-profile4=yes,no          If you want to install the 4.0 FX (defaults to yes)],                [], [with_profile4=yes])
 AC_ARG_WITH(profile4_5,[  --with-profile4_5=yes,no        If you want to install the 4.5 FX (defaults to yes)],                [], [with_profile4_5=yes])
 AC_ARG_WITH(monodroid, [  --with-monodroid=yes,no         If you want to build the MonoDroid assemblies (defaults to no)],     [], [with_monodroid=no])
 AC_ARG_WITH(monotouch, [  --with-monotouch=yes,no,only    If you want to build the MonoTouch assemblies (defaults to no)],     [], [with_monotouch=no])
@@ -3258,7 +3535,7 @@ AC_ARG_WITH(mcs_docs,[  --with-mcs-docs=yes,no         If you want to build the 
 		DISABLE_MCS_DOCS=yes
 	fi
 ])
-if test x$with_profile4 != xyes; then
+if test x$with_profile4_5 != xyes; then
 	DISABLE_MCS_DOCS=yes
 fi
 
@@ -3298,8 +3575,6 @@ dnl Consistency settings
 dnl
 if test x$cross_compiling = xyes -o x$enable_mcs_build = xno; then
    DISABLE_MCS_DOCS=yes
-   with_profile2=no
-   with_profile4=no
    with_profile4_5=no
    with_monodroid=no
    with_monotouch=no
@@ -3322,8 +3597,6 @@ AC_SUBST(OPROFILE_LIBS)
 
 libmono_ldflags="$libmono_ldflags $LIBS"
 
-AM_CONDITIONAL(INSTALL_2_0, [test "x$with_profile2" = xyes])
-AM_CONDITIONAL(INSTALL_4_0, [test "x$with_profile4" = xyes])
 AM_CONDITIONAL(INSTALL_4_5, [test "x$with_profile4_5" = xyes])
 AM_CONDITIONAL(INSTALL_MONODROID, [test "x$with_monodroid" != "xno"])
 AM_CONDITIONAL(INSTALL_MONOTOUCH, [test "x$with_monotouch" != "xno"])
@@ -3350,15 +3623,15 @@ AM_CONDITIONAL(HOST_ARM, test x$HOST = xARM)
 AM_CONDITIONAL(HOST_ARM64, test x$HOST = xARM64)
 AM_CONDITIONAL(CROSS_COMPILE, test "x$host" != "x$target")
 
-AM_CONDITIONAL(JIT_SUPPORTED, test x$JIT_SUPPORTED = xyes)
-AM_CONDITIONAL(INTERP_SUPPORTED, test x$interp_wanted = xtrue)
-AM_CONDITIONAL(INCLUDED_LIBGC, test x$gc = xincluded)
+AM_CONDITIONAL(INCLUDED_LIBGC, test x$libgc = xincluded)
 
 AC_SUBST(LIBC)
 AC_SUBST(INTL)
 AC_SUBST(SQLITE)
 AC_SUBST(SQLITE3)
 AC_SUBST(X11)
+AC_SUBST(GDKX11)
+AC_SUBST(GTKX11)
 AC_SUBST(XINERAMA)
 AC_DEFINE_UNQUOTED(ARCHITECTURE,"$arch_target",[The architecture this is running on])
 AC_SUBST(arch_target)
@@ -3369,11 +3642,7 @@ AC_SUBST(LDFLAGS)
 mono_build_root=`pwd`
 AC_SUBST(mono_build_root)
 
-if test x$USEJIT = xtrue; then
-  mono_runtime=mono/mini/mono
-else
-  mono_runtime=mono/interpreter/mint
-fi
+mono_runtime=mono/mini/mono
 AC_SUBST(mono_runtime)
 
 mono_cfg_root=$mono_build_root/runtime
@@ -3570,7 +3839,6 @@ mono/arch/arm/Makefile
 mono/arch/arm64/Makefile
 mono/arch/ia64/Makefile
 mono/arch/mips/Makefile
-mono/interpreter/Makefile
 mono/tests/Makefile
 mono/tests/tests-config
 mono/tests/assemblyresolve/Makefile
@@ -3583,7 +3851,6 @@ mono/tests/cas/threads/Makefile
 mono/tests/gc-descriptors/Makefile
 mono/unit-tests/Makefile
 mono/benchmark/Makefile
-mono/monograph/Makefile
 mono/io-layer/Makefile
 mono/mini/Makefile
 mono/profiler/Makefile
@@ -3625,6 +3892,7 @@ data/config
 tools/Makefile
 tools/locale-builder/Makefile
 tools/sgen/Makefile
+tools/monograph/Makefile
 runtime/Makefile
 msvc/Makefile
 po/Makefile
@@ -3699,11 +3967,6 @@ fi
 	   enable_system_aot=yes
 	fi
 
-	if test "x$enable_loadedllvm" = "xyes"; then
-	   # This seems to fail on the x86 buildbots
-	   enable_system_aot=no
-	fi
-
     if test x$host_win32 = xno -a x$enable_system_aot = xyes; then
       echo "ENABLE_AOT = 1" >> $mcs_topdir/build/config.make
     fi
@@ -3716,10 +3979,7 @@ fi
         echo "EXTENSION_MODULE = 1" >> $srcdir/$mcsdir/build/config.make
     fi
 
-	default_profile=net_2_0
-    if test -z "$INSTALL_4_0_TRUE"; then :
-  		default_profile=net_4_0
-    fi
+	default_profile=net_4_5
     if test -z "$INSTALL_MONODROID_TRUE"; then :
   		default_profile=monodroid
     fi
@@ -3765,6 +4025,8 @@ echo "
         mcs source:    $mcsdir
 
    Engine:
+	Host:	       $host
+	Target:	       $target
 	GC:	       $gc_msg 
 	TLS:           $with_tls
 	SIGALTSTACK:   $with_sigaltstack
@@ -3775,8 +4037,6 @@ echo "
 	LLVM Back End: $enable_llvm (dynamically loaded: $enable_loadedllvm)
 
    Libraries:
-	.NET 2.0/3.5:  $with_profile2
-	.NET 4.0:      $with_profile4
 	.NET 4.5:      $with_profile4_5
 	MonoDroid:     $with_monodroid
 	MonoTouch:     $with_monotouch

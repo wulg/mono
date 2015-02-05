@@ -13,6 +13,7 @@
 #include "mini.h"
 #include "ir-emit.h"
 #include "mono/utils/bsearch.h"
+#include <mono/metadata/abi-details.h>
 
 /*
 General notes on SIMD intrinsics
@@ -771,13 +772,15 @@ mono_simd_simplify_indirection (MonoCompile *cfg)
 
 			num_sregs = mono_inst_get_src_registers (ins, sregs);
 			for (j = 0; j < num_sregs; ++j) {
-				if (sregs [i] == var->dreg)
+				if (sregs [j] == var->dreg)
 					found = TRUE;
 			}
 			/*We can avoid inserting the XZERO if the first use doesn't depend on the zero'ed value.*/
 			if (ins->dreg == var->dreg && !found) {
+				DEBUG (printf ("[simd-simplify] INGORING R%d on BB %d because first op is a def", i, target_bb [var->dreg]->block_num););
 				break;
 			} else if (found) {
+				DEBUG (printf ("[simd-simplify] Adding XZERO for R%d on BB %d: ", i, target_bb [var->dreg]->block_num); );
 				MonoInst *tmp;
 				MONO_INST_NEW (cfg, tmp, OP_XZERO);
 				tmp->dreg = var->dreg;
@@ -790,8 +793,10 @@ mono_simd_simplify_indirection (MonoCompile *cfg)
 	}
 
 	for (ins = first_bb->code; ins; ins = ins->next) {
-		if (ins->opcode == OP_XZERO && (vreg_flags [ins->dreg] & VREG_SINGLE_BB_USE))
+		if (ins->opcode == OP_XZERO && (vreg_flags [ins->dreg] & VREG_SINGLE_BB_USE)) {
+			DEBUG (printf ("[simd-simplify] Nullify %d on first BB: ", ins->dreg); mono_print_ins(ins));
 			NULLIFY_INS (ins);
+		}
 	}
 
 	g_free (vreg_flags);
@@ -1569,7 +1574,7 @@ mono_emit_vector_ldelema (MonoCompile *cfg, MonoType *array_type, MonoInst *arr,
 
 	MONO_EMIT_NEW_BIALU_IMM (cfg, OP_MUL_IMM, mult_reg, index2_reg, size);
 	MONO_EMIT_NEW_BIALU (cfg, OP_PADD, add_reg, array_reg, mult_reg);
-	NEW_BIALU_IMM (cfg, ins, OP_PADD_IMM, add_reg, add_reg, G_STRUCT_OFFSET (MonoArray, vector));
+	NEW_BIALU_IMM (cfg, ins, OP_PADD_IMM, add_reg, add_reg, MONO_STRUCT_OFFSET (MonoArray, vector));
 	ins->type = STACK_PTR;
 	MONO_ADD_INS (cfg->cbb, ins);
 
@@ -1579,7 +1584,7 @@ mono_emit_vector_ldelema (MonoCompile *cfg, MonoType *array_type, MonoInst *arr,
 static MonoInst*
 emit_array_extension_intrinsics (MonoCompile *cfg, MonoMethod *cmethod, MonoMethodSignature *fsig, MonoInst **args)
 {
-	if (!strcmp ("GetVector", cmethod->name) || !strcmp ("GetVectorAligned", cmethod->name)) {
+	if ((!strcmp ("GetVector", cmethod->name) || !strcmp ("GetVectorAligned", cmethod->name)) && fsig->param_count == 2) {
 		MonoInst *load;
 		int addr = mono_emit_vector_ldelema (cfg, fsig->params [0], args [0], args [1], TRUE);
 
@@ -1592,7 +1597,7 @@ emit_array_extension_intrinsics (MonoCompile *cfg, MonoMethod *cmethod, MonoMeth
 
 		return load;
 	}
-	if (!strcmp ("SetVector", cmethod->name) || !strcmp ("SetVectorAligned", cmethod->name)) {
+	if ((!strcmp ("SetVector", cmethod->name) || !strcmp ("SetVectorAligned", cmethod->name)) && fsig->param_count == 3) {
 		MonoInst *store;
 		int vreg = get_simd_vreg (cfg, cmethod, args [1]);
 		int addr = mono_emit_vector_ldelema (cfg, fsig->params [0], args [0], args [2], TRUE);
@@ -1605,7 +1610,7 @@ emit_array_extension_intrinsics (MonoCompile *cfg, MonoMethod *cmethod, MonoMeth
 
 		return store;
 	}
-	if (!strcmp ("IsAligned", cmethod->name)) {
+	if (!strcmp ("IsAligned", cmethod->name) && fsig->param_count == 2) {
 		MonoInst *ins;
 		int addr = mono_emit_vector_ldelema (cfg, fsig->params [0], args [0], args [1], FALSE);
 
@@ -1622,7 +1627,7 @@ emit_array_extension_intrinsics (MonoCompile *cfg, MonoMethod *cmethod, MonoMeth
 static MonoInst*
 emit_simd_runtime_intrinsics (MonoCompile *cfg, MonoMethod *cmethod, MonoMethodSignature *fsig, MonoInst **args)
 {
-	if (!strcmp ("get_AccelMode", cmethod->name)) {
+	if (!strcmp ("get_AccelMode", cmethod->name) && fsig->param_count == 0) {
 		MonoInst *ins;
 		EMIT_NEW_ICONST (cfg, ins, simd_supported_versions);
 		return ins;
@@ -1635,7 +1640,8 @@ mono_emit_simd_intrinsics (MonoCompile *cfg, MonoMethod *cmethod, MonoMethodSign
 {
 	const char *class_name;
 
-	if (strcmp ("Mono.Simd", cmethod->klass->name_space))
+	if (strcmp ("Mono.Simd", cmethod->klass->image->assembly->aname.name) ||
+	    strcmp ("Mono.Simd", cmethod->klass->name_space))
 		return NULL;
 
 	class_name = cmethod->klass->name;

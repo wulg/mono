@@ -26,7 +26,6 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-#if NET_2_0
 
 using System;
 using System.IO;
@@ -158,7 +157,7 @@ namespace Microsoft.Build.Tasks {
 			return true;
 		}
 
-		protected override void LogEventsFromTextOutput (string singleLine, MessageImportance importance)
+		protected override void LogEventsFromTextOutput (string singleLine, MessageImportance messageImportance)
 		{
 			singleLine = singleLine.Trim ();
 			if (singleLine.Length == 0)
@@ -173,7 +172,7 @@ namespace Microsoft.Build.Tasks {
 
 			Match match = ErrorRegex.Match (singleLine);
 			if (!match.Success) {
-				Log.LogMessage (importance, singleLine);
+				Log.LogMessage (messageImportance, singleLine);
 				return;
 			}
 
@@ -198,7 +197,7 @@ namespace Microsoft.Build.Tasks {
 				Log.LogError (null, code, null, filename, lineNumber, columnNumber, -1,
 					-1, text, null);
 			} else {
-				Log.LogMessage (importance, singleLine);
+				Log.LogMessage (messageImportance, singleLine);
 			}
 		}
 
@@ -307,11 +306,7 @@ namespace Microsoft.Build.Tasks {
 		[MonoTODO]
 		protected override string ToolName {
 			get {
-#if NET_4_0
 				return MSBuildUtils.RunningOnWindows ? "vbnc.bat" : "vbnc";
-#else
-				return MSBuildUtils.RunningOnWindows ? "vbnc2.bat" : "vbnc2";
-#endif
 			}
 		}
 
@@ -355,4 +350,3 @@ namespace Microsoft.Build.Tasks {
 	}
 }
 
-#endif

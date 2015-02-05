@@ -35,7 +35,7 @@ using System.Configuration.Assemblies;
 using System.Globalization;
 using System.IO;
 using System.Reflection;
-#if !TARGET_JVM && !MONOTOUCH
+#if !MONOTOUCH
 using System.Reflection.Emit;
 #endif
 using System.Threading;
@@ -88,12 +88,8 @@ namespace MonoTests.System.Reflection
 		}
 
 		[Test] // bug #49114
-#if NET_2_0
 		[Category ("NotWorking")]
 		[ExpectedException (typeof (ArgumentException))]
-#else
-		[ExpectedException (typeof (TypeLoadException))]
-#endif
 		public void GetType_TypeName_Invalid () 
 		{
 			typeof (int).Assembly.GetType ("&blabla", true, true);
@@ -104,7 +100,6 @@ namespace MonoTests.System.Reflection
 		{
 			Assembly a = typeof (int).Assembly;
 			string typeName = typeof (string).AssemblyQualifiedName;
-#if NET_2_0
 			try {
 				a.GetType (typeName, true, false);
 				Assert.Fail ("#A1");
@@ -114,17 +109,6 @@ namespace MonoTests.System.Reflection
 				Assert.IsNotNull (ex.Message, "#A4");
 				Assert.IsNull (ex.ParamName, "#A5");
 			}
-#else
-			try {
-				a.GetType (typeName, true, false);
-				Assert.Fail ("#A1");
-			} catch (TypeLoadException ex) {
-				Assert.AreEqual (typeof (TypeLoadException), ex.GetType (), "#A2");
-				Assert.IsNull (ex.InnerException, "#A3");
-				Assert.IsNotNull (ex.Message, "#A4");
-				Assert.IsTrue (ex.Message.IndexOf (typeName) != -1, "#A5");
-			}
-#endif
 
 			Type type = a.GetType (typeName, false);
 			Assert.IsNull (type, "#B1");
@@ -141,18 +125,14 @@ namespace MonoTests.System.Reflection
 			string fname = AppDomain.CurrentDomain.FriendlyName;
 			if (fname.EndsWith (".dll")) { // nunit-console
 				Assert.IsNull (Assembly.GetEntryAssembly (), "GetEntryAssembly");
-#if NET_2_0 && !TARGET_JVM // IsDefaultAppDomain not supported for TARGET_JVM
 				Assert.IsFalse (AppDomain.CurrentDomain.IsDefaultAppDomain (), "!default appdomain");
-#endif
 			} else { // gnunit
 				Assert.IsNotNull (Assembly.GetEntryAssembly (), "GetEntryAssembly");
-#if NET_2_0 && !TARGET_JVM // IsDefaultAppDomain not supported for TARGET_JVM
 				Assert.IsTrue (AppDomain.CurrentDomain.IsDefaultAppDomain (), "!default appdomain");
-#endif
 			}
 		}
 
-#if !TARGET_JVM && !MONOTOUCH // Reflection.Emit is not supported.
+#if !MONOTOUCH // Reflection.Emit is not supported.
 		[Test]
 		public void GetModules_MissingFile ()
 		{
@@ -177,7 +157,6 @@ namespace MonoTests.System.Reflection
 		}
 #endif
 
-#if !TARGET_JVM // ManifestModule not supported under TARGET_JVM.
 		[Category ("NotWorking")]
 		[Test]
 		public void Corlib () 
@@ -224,7 +203,6 @@ namespace MonoTests.System.Reflection
 			Assert.IsNotNull (corlib_test.ManifestModule, "ManifestModule");
 			Assert.IsFalse (corlib_test.ReflectionOnly, "ReflectionOnly");
 		}
-#endif
 
 		[Test]
 		public void GetAssembly ()
@@ -234,7 +212,6 @@ namespace MonoTests.System.Reflection
 		}
 
 		[Test]
-		[Category("TargetJvmNotWorking")] // Not yet supported for TARGET_JVM
 		public void GetFile_Null ()
 		{
 			try {
@@ -249,7 +226,6 @@ namespace MonoTests.System.Reflection
 		}
 
 		[Test]
-		[Category("TargetJvmNotWorking")] // Not yet supported for TARGET_JVM
 		public void GetFile_Empty ()
 		{
 			try {
@@ -265,7 +241,6 @@ namespace MonoTests.System.Reflection
 		}
 
 		[Test]
-		[Category("TargetJvmNotWorking")] // Not yet supported for TARGET_JVM
 		public void GetFiles_False ()
 		{
 			Assembly corlib = typeof (int).Assembly;
@@ -278,7 +253,6 @@ namespace MonoTests.System.Reflection
 		}
 
 		[Test]
-		[Category("TargetJvmNotWorking")] // Not yet supported for TARGET_JVM
 		public void GetFiles_True ()
 		{
 			Assembly corlib = typeof (int).Assembly;
@@ -364,9 +338,6 @@ namespace MonoTests.System.Reflection
 		}
 
 		[Test] // bug #78517
-#if ONLY_1_1
-		[Category ("NotDotNet")] // MS.NET 1.x throws FileLoadException
-#endif
 		public void LoadFrom_Empty_Assembly ()
 		{
 			string tempFile = Path.GetTempFileName ();
@@ -427,7 +398,6 @@ namespace MonoTests.System.Reflection
 			Assert.Fail ("Was not able to load any corlib test");
 		}
 
-#if !TARGET_JVM // GetObjectData currently not implemented for Assembly.
 		[Test]
 		public void GetObjectData_Info_Null ()
 		{
@@ -444,7 +414,6 @@ namespace MonoTests.System.Reflection
 				Assert.AreEqual ("info", ex.ParamName, "#6");
 			}
 		}
-#endif // TARGET_JVM
 
 		[Test]
 		public void GetReferencedAssemblies ()
@@ -466,7 +435,7 @@ namespace MonoTests.System.Reflection
 			}
 		}
 
-#if !TARGET_JVM && !MONOTOUCH // Reflection.Emit is not supported.
+#if !MONOTOUCH // Reflection.Emit is not supported.
 		[Test]
 		public void Location_Empty() {
 			string assemblyFileName = Path.Combine (
@@ -597,15 +566,11 @@ namespace MonoTests.System.Reflection
 				Assert.AreEqual ("readme.txt", resInfo.FileName, "#A6");
 				Assert.IsNull (resInfo.ReferencedAssembly, "#A7");
 				Assert.AreEqual ((ResourceLocation) 0, resInfo.ResourceLocation, "#A8");
-#if NET_2_0
 				try {
 					assembly.GetManifestResourceStream ("read");
 					Assert.Fail ("#A9");
 				} catch (FileNotFoundException) {
 				}
-#else
-				Assert.IsNull (assembly.GetManifestResourceStream ("read"), "#A9");
-#endif
 				try {
 					assembly.GetFile ("readme.txt");
 					Assert.Fail ("#A10");
@@ -629,7 +594,6 @@ namespace MonoTests.System.Reflection
 			}
 		}
 
-#if NET_2_0
 		[Test]
 		[Category ("NotWorking")]
 		public void ReflectionOnlyLoad ()
@@ -658,7 +622,6 @@ namespace MonoTests.System.Reflection
 			Assembly assembly = Assembly.ReflectionOnlyLoad (typeof (AssemblyTest).Assembly.FullName);
 			assembly.CreateInstance ("MonoTests.System.Reflection.AssemblyTest");
 		}
-#endif
 
 		[Test]
 		[Category ("NotWorking")] // patch for bug #79720 must be committed first
@@ -768,11 +731,7 @@ namespace MonoTests.System.Reflection
 		}
 
 		[Test] // bug #79712
-#if NET_2_0
 		[Category ("NotWorking")] // in non-default domain, MS throws FileNotFoundException
-#else
-		[Category ("NotWorking")]
-#endif
 		public void Load_Culture_Mismatch ()
 		{
 			string tempDir = Path.Combine (Path.GetTempPath (),
@@ -795,11 +754,7 @@ namespace MonoTests.System.Reflection
 				aname = new AssemblyName ();
 				aname.Name = "bug79712a";
 				aname.CultureInfo = CultureInfo.InvariantCulture;
-#if NET_2_0
 				Assert.IsTrue (cdt.AssertFileNotFoundException (aname), "#A1");
-#else
-				Assert.IsTrue (cdt.AssertFileLoadException (aname), "#A2");
-#endif
 
 				// PART B
 
@@ -811,11 +766,7 @@ namespace MonoTests.System.Reflection
 				aname = new AssemblyName ();
 				aname.Name = "bug79712b";
 				aname.CultureInfo = new CultureInfo ("en-US");
-#if NET_2_0
 				Assert.IsTrue (cdt.AssertFileNotFoundException (aname), "#B1");
-#else
-				Assert.IsTrue (cdt.AssertFileLoadException (aname), "#B2");
-#endif
 			} finally {
 				AppDomain.Unload (ad);
 				if (Directory.Exists (tempDir))
@@ -1085,7 +1036,7 @@ namespace MonoTests.System.Reflection
 
 			Directory.Delete (outdir, true);
 		}
-#endif // TARGET_JVM
+#endif
 
 		[Test]
 		public void ManifestModule ()

@@ -286,11 +286,6 @@ typedef struct {
 } MonoTypeLoadException;
 
 typedef struct {
-	MonoException base;
-	MonoObject *wrapped_exception;
-} MonoRuntimeWrappedException;
-
-typedef struct {
 	MonoObject   object;
 	MonoObject  *async_state;
 	MonoObject  *handle;
@@ -380,6 +375,7 @@ typedef struct {
 	MonoObject obj;
 	gint32 il_offset;
 	gint32 native_offset;
+	gint64 method_address;
 	MonoReflectionMethod *method;
 	MonoString *filename;
 	gint32 line;
@@ -419,7 +415,7 @@ struct _MonoInternalThread {
 	gpointer suspend_event;
 	gpointer suspended_event;
 	gpointer resume_event;
-	CRITICAL_SECTION *synch_cs;
+	mono_mutex_t *synch_cs;
 	MonoBoolean threadpool_thread;
 	MonoBoolean thread_dump_requested;
 	MonoBoolean thread_interrupt_requested;
@@ -533,6 +529,37 @@ typedef struct {
 
 typedef struct {
 	MonoObject obj;
+	MonoString *NativeName;
+	MonoArray *ShortDatePatterns;
+	MonoArray *YearMonthPatterns;
+	MonoArray *LongDatePatterns;
+	MonoString *MonthDayPattern;
+
+	MonoArray *EraNames;
+	MonoArray *AbbreviatedEraNames;
+	MonoArray *AbbreviatedEnglishEraNames;
+	MonoArray *DayNames;
+	MonoArray *AbbreviatedDayNames;
+	MonoArray *SuperShortDayNames;
+	MonoArray *MonthNames;
+	MonoArray *AbbreviatedMonthNames;
+	MonoArray *GenitiveMonthNames;
+	MonoArray *GenitiveAbbreviatedMonthNames;
+} MonoCalendarData;
+
+typedef struct {
+	MonoObject obj;
+	MonoString *AMDesignator;
+	MonoString *PMDesignator;
+	MonoString *TimeSeparator;
+	MonoArray *LongTimePatterns;
+	MonoArray *ShortTimePatterns;
+	guint32 FirstDayOfWeek;
+	guint32 CalendarWeekRule;
+} MonoCultureData;
+
+typedef struct {
+	MonoObject obj;
 	MonoBoolean is_read_only;
 	gint32 lcid;
 	gint32 parent_lcid;
@@ -596,6 +623,7 @@ typedef struct {
 	void     (*set_cast_details) (MonoClass *from, MonoClass *to);
 	void     (*debug_log) (int level, MonoString *category, MonoString *message);
 	gboolean (*debug_log_is_enabled) (void);
+	gboolean (*tls_key_supported) (MonoTlsKey key);
 } MonoRuntimeCallbacks;
 
 typedef gboolean (*MonoInternalStackWalk) (MonoStackFrameInfo *frame, MonoContext *ctx, gpointer data);
@@ -647,7 +675,7 @@ void
 mono_method_return_message_restore (MonoMethod *method, gpointer *params, MonoArray *out_args) MONO_INTERNAL;
 
 void
-mono_delegate_ctor_with_method (MonoObject *this, MonoObject *target, gpointer addr, MonoMethod *method) MONO_INTERNAL;
+mono_delegate_ctor_with_method (MonoObject *this_obj, MonoObject *target, gpointer addr, MonoMethod *method) MONO_INTERNAL;
 
 void
 mono_delegate_ctor	    (MonoObject *this_obj, MonoObject *target, gpointer addr) MONO_INTERNAL;
@@ -1414,7 +1442,7 @@ void        mono_reflection_create_unmanaged_type (MonoReflectionType *type) MON
 void        mono_reflection_register_with_runtime (MonoReflectionType *type) MONO_INTERNAL;
 
 void        mono_reflection_create_custom_attr_data_args (MonoImage *image, MonoMethod *method, const guchar *data, guint32 len, MonoArray **typed_args, MonoArray **named_args, CattrNamedArg **named_arg_info, MonoError *error) MONO_INTERNAL;
-MonoMethodSignature * mono_reflection_lookup_signature (MonoImage *image, MonoMethod *method, guint32 token) MONO_INTERNAL;
+MonoMethodSignature * mono_reflection_lookup_signature (MonoImage *image, MonoMethod *method, guint32 token, MonoError *error) MONO_INTERNAL;
 
 MonoArray* mono_param_get_objects_internal  (MonoDomain *domain, MonoMethod *method, MonoClass *refclass) MONO_INTERNAL;
 
@@ -1476,7 +1504,7 @@ void
 mono_array_full_copy (MonoArray *src, MonoArray *dest) MONO_INTERNAL;
 
 gboolean
-mono_array_calc_byte_len (MonoClass *class, uintptr_t len, uintptr_t *res) MONO_INTERNAL;
+mono_array_calc_byte_len (MonoClass *klass, uintptr_t len, uintptr_t *res) MONO_INTERNAL;
 
 #ifndef DISABLE_REMOTING
 MonoObject *
@@ -1567,7 +1595,7 @@ void
 mono_runtime_unhandled_exception_policy_set (MonoRuntimeUnhandledExceptionPolicy policy) MONO_INTERNAL;
 
 MonoVTable *
-mono_class_try_get_vtable (MonoDomain *domain, MonoClass *class) MONO_INTERNAL;
+mono_class_try_get_vtable (MonoDomain *domain, MonoClass *klass) MONO_INTERNAL;
 
 MonoException *
 mono_runtime_class_init_full (MonoVTable *vtable, gboolean raise_exception) MONO_INTERNAL;
@@ -1576,16 +1604,16 @@ void
 mono_method_clear_object (MonoDomain *domain, MonoMethod *method) MONO_INTERNAL;
 
 void
-mono_class_compute_gc_descriptor (MonoClass *class) MONO_INTERNAL;
+mono_class_compute_gc_descriptor (MonoClass *klass) MONO_INTERNAL;
 
 gsize*
-mono_class_compute_bitmap (MonoClass *class, gsize *bitmap, int size, int offset, int *max_set, gboolean static_fields) MONO_INTERNAL;
+mono_class_compute_bitmap (MonoClass *klass, gsize *bitmap, int size, int offset, int *max_set, gboolean static_fields) MONO_INTERNAL;
 
 MonoObject*
 mono_object_xdomain_representation (MonoObject *obj, MonoDomain *target_domain, MonoObject **exc) MONO_INTERNAL;
 
 gboolean
-mono_class_is_reflection_method_or_constructor (MonoClass *class) MONO_INTERNAL;
+mono_class_is_reflection_method_or_constructor (MonoClass *klass) MONO_INTERNAL;
 
 MonoObject *
 mono_get_object_from_blob (MonoDomain *domain, MonoType *type, const char *blob) MONO_INTERNAL;

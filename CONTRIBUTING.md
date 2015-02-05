@@ -5,7 +5,7 @@ When contributing to the Mono project, please follow the [Mono Coding
 Guidelines][1].  We have been using a coding style for many years,
 please make your patches conform to these guidelines.
 
-[1] http://www.mono-project.com/Coding_Guidelines
+[1]: http://www.mono-project.com/community/contributing/coding-guidelines/
 
 Etiquette
 =========
@@ -68,4 +68,17 @@ status of your pull request. If it succeeded and we like the changes,
 a maintainer will likely merge it. Otherwise, you can amend your pull
 request to fix build breakage and Jenkins will test it again.
 
-[2] http://monojenkins.cloudapp.net
+[2]: http://jenkins.mono-project.com/
+
+# Inactivity
+
+Occasionally, a pull request sits for several months without any
+response from the author. This isn't necessarily an issue, but we may
+sometimes decide to close pull requests that have not seen any
+progress for a long time. This is in interest of keeping the pull
+request list clean so that other pull requests don't get lost in the
+clutter.
+
+If we do close your pull request due to inactivity, you're more than
+welcome to submit it anew after you address any comments or issues that
+were brought up on the original pull request.

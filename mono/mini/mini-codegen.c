@@ -686,6 +686,7 @@ mono_print_ins_index (int i, MonoInst *ins)
 	case OP_GC_LIVENESS_USE:
 		printf (" R%d", (int)ins->inst_c1);
 		break;
+	case OP_IL_SEQ_POINT:
 	case OP_SEQ_POINT:
 		printf (" il: %x", (int)ins->inst_imm);
 		break;
@@ -1173,6 +1174,8 @@ mono_local_regalloc (MonoCompile *cfg, MonoBasicBlock *bb)
 	 * bblock.
 	 */
 	for (ins = bb->code; ins; ins = ins->next) {
+		gboolean modify = FALSE;
+
 		spec = ins_get_spec (ins->opcode);
 
 		if ((ins->dreg != -1) && (ins->dreg < max)) {
@@ -1198,12 +1201,14 @@ mono_local_regalloc (MonoCompile *cfg, MonoBasicBlock *bb)
 #if SIZEOF_REGISTER == 4
 				if (MONO_ARCH_INST_IS_REGPAIR (spec [MONO_INST_SRC1 + j])) {
 					sregs [j]++;
+					modify = TRUE;
 					memset (&reginfo [sregs [j] + 1], 0, sizeof (RegTrack));
 				}
 #endif
 			}
 		}
-		mono_inst_set_src_registers (ins, sregs);
+		if (modify)
+			mono_inst_set_src_registers (ins, sregs);
 	}
 
 	/*if (cfg->opt & MONO_OPT_COPYPROP)
@@ -1452,6 +1457,8 @@ mono_local_regalloc (MonoCompile *cfg, MonoBasicBlock *bb)
 						if (k != j)
 							sreg_masks [k] &= ~ (regmask (dest_sreg));
 					}
+					/* See below */
+					dreg_mask &= ~ (regmask (dest_sreg));
 				} else {
 					val = rs->vassign [sreg];
 					if (val == -1) {
@@ -1471,7 +1478,7 @@ mono_local_regalloc (MonoCompile *cfg, MonoBasicBlock *bb)
 								sreg_masks [k] &= ~ (regmask (dest_sreg));
 						}
 						/* 
-						 * Prevent the dreg from being allocate to dest_sreg 
+						 * Prevent the dreg from being allocated to dest_sreg
 						 * too, since it could force sreg1 to be allocated to 
 						 * the same reg on x86.
 						 */
@@ -2567,7 +2574,8 @@ mono_is_regsize_var (MonoType *t)
 void
 mono_peephole_ins (MonoBasicBlock *bb, MonoInst *ins)
 {
-	MonoInst *last_ins = ins->prev;
+	int filter = FILTER_IL_SEQ_POINT;
+	MonoInst *last_ins = mono_inst_prev (ins, filter);
 
 	switch (ins->opcode) {
 	case OP_MUL_IMM: 
@@ -2591,7 +2599,7 @@ mono_peephole_ins (MonoBasicBlock *bb, MonoInst *ins)
 		 * OP_MOVE reg1, reg2
 		 */
 		if (last_ins && last_ins->opcode == OP_GC_LIVENESS_DEF)
-			last_ins = last_ins->prev;
+			last_ins = mono_inst_prev (ins, filter);
 		if (last_ins &&
 			(((ins->opcode == OP_LOADI4_MEMBASE) && (last_ins->opcode == OP_STOREI4_MEMBASE_REG)) ||
 			 ((ins->opcode == OP_LOAD_MEMBASE) && (last_ins->opcode == OP_STORE_MEMBASE_REG))) &&

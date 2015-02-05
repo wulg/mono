@@ -5,12 +5,11 @@ export __SECURITY_BOOTSTRAP_DB=$(topdir)/class/corlib
 
 LIBRARY = corlib.dll
 LIBRARY_NAME = mscorlib.dll
-LIB_MCS_FLAGS = $(RESOURCE_FILES:%=-resource:%)
+
+REFERENCE_SOURCES_FLAGS = -d:FEATURE_PAL,PFX_LEGACY_3_5 -d:MONO
+LIB_MCS_FLAGS = $(REFERENCE_SOURCES_FLAGS) $(RESOURCE_FILES:%=-resource:%)
+
 #LIBRARY_USE_INTERMEDIATE_FILE = yes
-
-ifeq (basic, $(PROFILE))
-
-else
 
 ifeq (2, $(FRAMEWORK_VERSION_MAJOR))
 LIB_MCS_FLAGS += --runtime:v2
@@ -20,8 +19,6 @@ LIB_MCS_FLAGS += --runtime:v4
 else
 $(error Unknown framework version)
 endif
-endif
-
 endif
 
 LIBRARY_COMPILE = $(BOOT_COMPILE)
@@ -36,7 +33,8 @@ RESOURCE_FILES = \
 	resources/collation.cjkKO.bin \
 	resources/collation.cjkKOlv2.bin
 
-LOCAL_MCS_FLAGS = -unsafe -nostdlib -nowarn:612,618 -d:INSIDE_CORLIB -d:LIBC
+REFERENCE_SOURCES_FLAGS = -d:FEATURE_PAL,GENERICS_WORK,FEATURE_LIST_PREDICATES,FEATURE_SERIALIZATION
+LOCAL_MCS_FLAGS = -unsafe -nostdlib -nowarn:612,618 -d:INSIDE_CORLIB,MONO_CULTURE_DATA -d:LIBC $(REFERENCE_SOURCES_FLAGS)
 DEFAULT_REFERENCES =
 
 # System.IO/DirectoryInfoTest.cs needs Mono.Posix
@@ -134,7 +132,7 @@ $(vtsdir)/$(PROFILE)_TestLib/%/Address.dll: $(vtsdir)/VersionTolerantSerializati
 	@mkdir -p $(dir $@)
 	$(CSCOMPILE) -target:library -r:$(corlib) -warn:0 -out:$@ $^
 
-$(vtsdir)/$(PROFILE)_TestLib/BinarySerializationOverVersions.exe: $(vtsdir)/BinarySerializationOverVersions.cs $(vtsdir)/$(PROFILE)_TestLib/1.0/Address.dll
+$(vtsdir)/$(PROFILE)_TestLib/BinarySerializationOverVersions.exe: $(vtsdir)/BinarySerializationOverVersions.cs $(vtsdir)/$(PROFILE)_TestLib/1.0/Address.dll $(test_nunit_dep)
 	$(CSCOMPILE) $(test_nunit_ref) -warn:0 -r:$(corlib) \
 		-r:$(vtsdir)/$(PROFILE)_TestLib/1.0/Address.dll \
 		$(vtsdir)/BinarySerializationOverVersions.cs -out:$@
@@ -147,8 +145,10 @@ run-test-vts: test-vts
 	@echo Running vts tests...
 	PATH="$(TEST_RUNTIME_WRAPPERS_PATH):$(PATH)" $(TEST_RUNTIME) $(RUNTIME_FLAGS) $(TEST_HARNESS) -noshadow \
 		$(vtsdir)/$(PROFILE)_TestLib/BinarySerializationOverVersions.exe
+ifndef NO_TEST
 test: test-vts
 run-test: run-test-vts
+endif
 
 EXTRA_DISTFILES += \
 	$(vtsdir)/VersionTolerantSerializationTestLib/1.0/Address.cs \
